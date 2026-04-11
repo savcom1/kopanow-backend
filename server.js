@@ -70,6 +70,15 @@ app.use('/api/pin',     pinRoutes);      // PIN / passcode management
 // Admin dashboard static files
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
+// Root — helpful landing instead of 404
+app.get('/', (_req, res) => res.json({
+  service: 'kopanow-backend',
+  status:  'running',
+  admin:   '/admin',
+  health:  '/health',
+  api:     '/api/device | /api/admin | /api/payment | /api/pin'
+}));
+
 // Health endpoint
 app.get('/health', async (_req, res) => {
   const supabase = require('./helpers/supabase');
