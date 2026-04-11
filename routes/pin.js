@@ -74,7 +74,7 @@ router.post('/set', async (req, res) => {
       borrower_id: device.borrower_id,
       loan_id:     device.loan_id,
       event_type:  'PASSCODE_SET',
-      severity:    'medium',
+      severity:    'MEDIUM',
       detail:      'Admin issued a 6-digit passcode to the device',
       reviewed:    false,
       created_at:  now
