@@ -85,7 +85,11 @@ app.get('/health', async (_req, res) => {
   let dbStatus = 'unknown';
   try {
     const { error } = await supabase.from('devices').select('id', { count: 'exact', head: true });
-    dbStatus = error ? `error: ${error.message}` : 'connected';
+    if (error) {
+      dbStatus = `error: ${error.message || error.code || error.details || JSON.stringify(error)}`;
+    } else {
+      dbStatus = 'connected';
+    }
   } catch (e) {
     dbStatus = `error: ${e.message}`;
   }
