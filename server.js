@@ -13,7 +13,14 @@ const admin   = require('firebase-admin');
 const FIREBASE_READY = (() => {
   const projectId   = process.env.FIREBASE_PROJECT_ID   || '';
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || '';
-  const privateKey  = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+  // Support base64-encoded key (preferred for Render/cloud) OR raw key with escaped newlines
+  let privateKey = '';
+  if (process.env.FIREBASE_PRIVATE_KEY_BASE64) {
+    privateKey = Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, 'base64').toString('utf8');
+  } else {
+    privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  }
 
   const isPlaceholder =
     !projectId || projectId.includes('your-') ||
@@ -21,17 +28,17 @@ const FIREBASE_READY = (() => {
     !privateKey || privateKey.includes('YOUR_KEY_HERE');
 
   if (isPlaceholder) {
-    console.warn('[firebase] ⚠️  Placeholder credentials — Firebase/FCM disabled.');
+    console.warn('[firebase] Warning: Placeholder credentials - Firebase/FCM disabled.');
     return false;
   }
   try {
     if (!admin.apps.length) {
       admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
     }
-    console.log('[firebase] Admin SDK initialised ✓');
+    console.log('[firebase] Admin SDK initialised');
     return true;
   } catch (err) {
-    console.error('[firebase] Init failed — FCM disabled:', err.message);
+    console.error('[firebase] Init failed - FCM disabled:', err.message);
     return false;
   }
 })();
