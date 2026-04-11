@@ -1,0 +1,180 @@
+{
+  "info": {
+    "name": "Kopanow Backend (Tanzania)",
+    "description": "All API routes for Kopanow MDM backend. Set the {{base_url}} variable to http://localhost:3000 for local dev or your Render URL for production.",
+    "_postman_id": "kopanow-api-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",    "value": "http://localhost:3000" },
+    { "key": "borrower_id", "value": "borrower_001" },
+    { "key": "loan_id",     "value": "loan_001" },
+    { "key": "device_id",   "value": "abc123def456" },
+    { "key": "fcm_token",   "value": "YOUR_FCM_TOKEN_HERE" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health",
+            "description": "Smoke test — verify server and DB are up"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device",
+      "item": [
+        {
+          "name": "POST /device/register",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\": \"{{borrower_id}}\",\n  \"loan_id\":     \"{{loan_id}}\",\n  \"device_id\":   \"{{device_id}}\",\n  \"fcm_token\":   \"{{fcm_token}}\",\n  \"device_model\":\"Samsung Galaxy A52\",\n  \"mpesa_phone\": \"255700000000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Called by EnrollmentManager after borrower grants device admin. Creates/upserts Device document and sets Loan.device_status = active."
+          }
+        },
+        {
+          "name": "POST /device/heartbeat",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/heartbeat",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\":  \"{{borrower_id}}\",\n  \"loan_id\":      \"{{loan_id}}\",\n  \"device_id\":    \"{{device_id}}\",\n  \"dpc_active\":   true,\n  \"is_safe_mode\": false,\n  \"battery_pct\":  82,\n  \"timestamp\":    {{$timestamp}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "24h periodic telemetry. Server checks device_id (S3), safe_mode (S4), dpc_active (silent removal) and returns LOCK/UNLOCK/REMOVE_ADMIN action."
+          }
+        },
+        {
+          "name": "POST /device/heartbeat — Scenario 3 (device_id mismatch)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/heartbeat",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\":  \"{{borrower_id}}\",\n  \"loan_id\":      \"{{loan_id}}\",\n  \"device_id\":    \"DIFFERENT_DEVICE_FINGERPRINT\",\n  \"dpc_active\":   true,\n  \"is_safe_mode\": false,\n  \"battery_pct\":  55,\n  \"timestamp\":    {{$timestamp}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Simulate Scenario 3: send a device_id that does not match the enrolled fingerprint. Expect LOCK action + DEVICE_MISMATCH TamperLog."
+          }
+        },
+        {
+          "name": "POST /device/heartbeat — Scenario 4 (safe mode)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/heartbeat",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\":  \"{{borrower_id}}\",\n  \"loan_id\":      \"{{loan_id}}\",\n  \"device_id\":    \"{{device_id}}\",\n  \"dpc_active\":   true,\n  \"is_safe_mode\": true,\n  \"battery_pct\":  40,\n  \"timestamp\":    {{$timestamp}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Simulate Scenario 4: is_safe_mode = true. Expect LOCK action + SAFE_MODE_DETECTED TamperLog."
+          }
+        },
+        {
+          "name": "POST /device/tamper — ADMIN_REVOKED",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/tamper",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\": \"{{borrower_id}}\",\n  \"loan_id\":     \"{{loan_id}}\",\n  \"device_id\":   \"{{device_id}}\",\n  \"event_type\":  \"ADMIN_REVOKED\",\n  \"detail\":      \"User tapped Remove in device admin settings\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Called by Android TamperReportWorker. ADMIN_REVOKED triggers immediate LOCK_DEVICE FCM + HIGH tamper log."
+          }
+        },
+        {
+          "name": "POST /device/status",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\": \"{{borrower_id}}\",\n  \"loan_id\":     \"{{loan_id}}\",\n  \"status\":      \"admin_removed_by_fcm\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Device acknowledges a status change (locked, unlocked, admin removed)."
+          }
+        },
+        {
+          "name": "POST /device/fcm-token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/device/fcm-token",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\": \"{{borrower_id}}\",\n  \"fcm_token\":   \"NEW_FCM_TOKEN_AFTER_ROTATION\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Called by KopanowFCMService.onNewToken() when the FCM registration token rotates."
+          }
+        }
+      ]
+    },
+    {
+      "name": "M-Pesa",
+      "item": [
+        {
+          "name": "POST /mpesa/stk-push",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/mpesa/stk-push",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"borrower_id\": \"{{borrower_id}}\",\n  \"loan_id\":     \"{{loan_id}}\",\n  \"amount\":      4500,\n  \"timestamp\":   {{$timestamp}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Initiate M-Pesa STK push to borrower's registered phone. Returns checkout_request_id."
+          }
+        },
+        {
+          "name": "POST /mpesa/callback — success",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/mpesa/callback",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Body\": {\n    \"stkCallback\": {\n      \"MerchantRequestID\": \"test-merchant-001\",\n      \"CheckoutRequestID\": \"ws_CO_{{$timestamp}}_{{borrower_id}}\",\n      \"ResultCode\": 0,\n      \"ResultDesc\": \"The service request is processed successfully.\",\n      \"CallbackMetadata\": {\n        \"Item\": [\n          { \"Name\": \"Amount\",             \"Value\": 4500 },\n          { \"Name\": \"MpesaReceiptNumber\", \"Value\": \"TZ_REF_12345\" },\n          { \"Name\": \"TransactionDate\",    \"Value\": 20240324120000 },\n          { \"Name\": \"PhoneNumber\",        \"Value\": 255700000000 }\n        ]\n      }\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Simulate a successful Vodacom M-Pesa STK callback. Server should apply payment, send UNLOCK or REMOVE_ADMIN FCM."
+          }
+        },
+        {
+          "name": "POST /mpesa/callback — cancelled",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/mpesa/callback",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Body\": {\n    \"stkCallback\": {\n      \"MerchantRequestID\": \"test-merchant-002\",\n      \"CheckoutRequestID\": \"ws_CO_cancelled\",\n      \"ResultCode\": 1032,\n      \"ResultDesc\": \"Request cancelled by user.\"\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Simulate a cancelled / failed STK push. ResultCode != 0 → no action taken."
+          }
+        }
+      ]
+    }
+  ]
+}

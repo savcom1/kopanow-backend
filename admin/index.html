@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kopanow Admin — Device Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ══════════════════ SIDEBAR ══════════════════ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">Kopanow</span>
+      <span class="brand-tag">Admin</span>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-view="devices">
+        <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+        Devices
+        <span class="badge" id="badge-locked">0</span>
+      </button>
+      <button class="nav-item" data-view="tamper">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        Tamper Log
+        <span class="badge badge-red" id="badge-tamper">0</span>
+      </button>
+      <button class="nav-item" data-view="loans">
+        <svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+        Loans
+      </button>
+      <button class="nav-item" data-view="payments">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v4z"/></svg>
+        Payments
+        <span class="badge badge-red" id="badge-payments">0</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="refresh-status">
+        <span class="pulse"></span>
+        <span id="last-refresh">Connecting…</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════════════ MAIN CONTENT ══════════════════ -->
+  <main class="main">
+
+    <!-- ── HEADER ── -->
+    <header class="topbar">
+      <h1 class="page-title" id="page-title">Dashboard</h1>
+      <div class="topbar-actions">
+        <input type="text" class="search-box" id="search-input" placeholder="Search devices…" />
+        <button class="btn btn-secondary" id="btn-refresh" title="Refresh now">
+          <svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- ══════════ VIEW: DASHBOARD ══════════ -->
+    <section class="view active" id="view-dashboard">
+      <div class="kpi-grid" id="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Devices</div>
+          <div class="kpi-value" id="kpi-total">—</div>
+        </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-label">Active</div>
+          <div class="kpi-value" id="kpi-active">—</div>
+        </div>
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Locked</div>
+          <div class="kpi-value" id="kpi-locked">—</div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Unregistered</div>
+          <div class="kpi-value" id="kpi-unregistered">—</div>
+        </div>
+        <div class="kpi-card kpi-grey">
+          <div class="kpi-label">Admin Removed</div>
+          <div class="kpi-value" id="kpi-removed">—</div>
+        </div>
+      </div>
+
+      <div class="section-title">Recently Seen Devices</div>
+      <div class="table-wrap">
+        <table class="data-table" id="dash-table">
+          <thead>
+            <tr>
+              <th>Borrower</th><th>Loan</th><th>Model</th>
+              <th>Status</th><th>Last Seen</th><th>Outstanding</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="dash-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════ VIEW: DEVICES ══════════ -->
+    <section class="view" id="view-devices">
+      <div class="filter-row">
+        <button class="chip active" data-status="all">All</button>
+        <button class="chip" data-status="active">Active</button>
+        <button class="chip" data-status="locked">Locked</button>
+        <button class="chip" data-status="registered">Registered</button>
+        <button class="chip" data-status="admin_removed">Removed</button>
+        <button class="chip" data-status="suspended">Suspended</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="devices-table">
+          <thead>
+            <tr>
+              <th>Borrower</th><th>Loan ID</th><th>Device ID</th><th>Model</th>
+              <th>Status</th><th>DPC</th><th>Last Seen</th>
+              <th>Overdue</th><th>Outstanding</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="devices-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="devices-pagination"></div>
+    </section>
+
+    <!-- ══════════ VIEW: TAMPER LOG ══════════ -->
+    <section class="view" id="view-tamper">
+      <div class="filter-row">
+        <button class="chip active" data-sev="all">All Severity</button>
+        <button class="chip chip-critical" data-sev="CRITICAL">Critical</button>
+        <button class="chip chip-high" data-sev="HIGH">High</button>
+        <button class="chip chip-medium" data-sev="MEDIUM">Medium</button>
+        <button class="chip chip-low" data-sev="LOW">Low</button>
+        <button class="chip" data-reviewed="false" style="margin-left:auto">Unreviewed</button>
+      </div>
+      <div class="tamper-list" id="tamper-list"></div>
+    </section>
+
+    <!-- ══════════ VIEW: LOANS ══════════ -->
+    <section class="view" id="view-loans">
+      <div class="table-wrap">
+        <table class="data-table" id="loans-table">
+          <thead>
+            <tr>
+              <th>Loan ID</th><th>Borrower</th><th>Principal</th>
+              <th>Outstanding</th><th>Next Due</th><th>Overdue Days</th><th>Device Status</th>
+            </tr>
+          </thead>
+          <tbody id="loans-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════ VIEW: PAYMENTS ══════════ -->
+    <section class="view" id="view-payments">
+      <div class="filter-row">
+        <button class="chip active" data-pay-status="pending">⏳ Pending</button>
+        <button class="chip" data-pay-status="verified">✓ Verified</button>
+        <button class="chip" data-pay-status="rejected">✗ Rejected</button>
+        <button class="chip" data-pay-status="all">All</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Borrower</th><th>Loan ID</th><th>M-Pesa Ref</th>
+              <th>Amount (TSh)</th><th>Submitted</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="payments-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════ DEVICE DETAIL MODAL ══════════════════ -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <button class="modal-close" id="modal-close">✕</button>
+      <h2 class="modal-title" id="modal-title">Device Detail</h2>
+      <div class="modal-body" id="modal-body"></div>
+
+      <div class="command-panel">
+        <div class="command-title">Send Command</div>
+        <div class="command-row">
+          <input class="lock-reason-input" id="cmd-lock-reason" placeholder="Lock reason (optional)" />
+          <button class="btn btn-danger"   id="cmd-lock">&#x1F512; Lock</button>
+          <button class="btn btn-green"    id="cmd-unlock">&#x1F513; Unlock</button>
+          <button class="btn btn-secondary" id="cmd-remove">Remove Admin</button>
+          <button class="btn btn-ghost"    id="cmd-heartbeat">Ping Heartbeat</button>
+        </div>
+
+        <!-- ── PIN / Passcode row ── -->
+        <div class="command-title" style="margin-top:16px">Passcode (PIN Lock)</div>
+        <div class="command-row">
+          <button class="btn btn-amber" id="cmd-set-pin">&#x1F511; Set PIN</button>
+          <button class="btn btn-ghost" id="cmd-clear-pin">&#x2715; Clear PIN</button>
+        </div>
+
+        <!-- PIN display box — shown once after Set PIN, auto-clears after 60 s -->
+        <div id="pin-reveal-box" style="display:none;margin-top:12px;padding:14px 18px;
+             background:#1a1a2e;border:1px solid #f0a500;border-radius:10px;
+             text-align:center">
+          <div style="font-size:11px;color:#888;margin-bottom:6px;letter-spacing:.08em">UNLOCK PIN — READ TO BORROWER</div>
+          <div id="pin-reveal-value" style="font-size:36px;font-weight:700;letter-spacing:.3em;color:#f0a500;font-family:monospace">——</div>
+          <div style="font-size:11px;color:#888;margin-top:6px">This PIN will be hidden in <span id="pin-countdown">60</span>s</div>
+        </div>
+
+        <div class="cmd-result" id="cmd-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ TOAST ══════════════════ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

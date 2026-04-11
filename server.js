@@ -1,0 +1,133 @@
+'use strict';
+require('dotenv').config();
+
+const path    = require('path');
+const express = require('express');
+const admin   = require('firebase-admin');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. Firebase Admin SDK
+//    Skipped gracefully when credentials are placeholders (local dev without FCM).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FIREBASE_READY = (() => {
+  const projectId   = process.env.FIREBASE_PROJECT_ID   || '';
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || '';
+  const privateKey  = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+  const isPlaceholder =
+    !projectId || projectId.includes('your-') ||
+    !clientEmail || clientEmail.includes('your-') ||
+    !privateKey || privateKey.includes('YOUR_KEY_HERE');
+
+  if (isPlaceholder) {
+    console.warn('[firebase] ⚠️  Placeholder credentials — Firebase/FCM disabled.');
+    return false;
+  }
+  try {
+    if (!admin.apps.length) {
+      admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
+    }
+    console.log('[firebase] Admin SDK initialised ✓');
+    return true;
+  } catch (err) {
+    console.error('[firebase] Init failed — FCM disabled:', err.message);
+    return false;
+  }
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. Routes
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deviceRoutes  = require('./routes/device');
+const paymentRoutes = require('./routes/payment-reference');
+const adminRoutes   = require('./routes/admin');
+const pinRoutes     = require('./routes/pin');
+const { startPaymentScheduler } = require('./cron/jobs');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Express app
+// ─────────────────────────────────────────────────────────────────────────────
+
+const app  = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+app.use('/api/device',  deviceRoutes);
+app.use('/api/payment', paymentRoutes);  // payment reference submission
+app.use('/api/admin',   adminRoutes);
+app.use('/api/pin',     pinRoutes);      // PIN / passcode management
+
+// Admin dashboard static files
+app.use('/admin', express.static(path.join(__dirname, 'admin')));
+
+// Health endpoint
+app.get('/health', async (_req, res) => {
+  const supabase = require('./helpers/supabase');
+  let dbStatus = 'unknown';
+  try {
+    const { error } = await supabase.from('devices').select('id', { count: 'exact', head: true });
+    dbStatus = error ? `error: ${error.message}` : 'connected';
+  } catch (e) {
+    dbStatus = `error: ${e.message}`;
+  }
+  res.json({
+    status:   'ok',
+    service:  'kopanow-backend',
+    version:  process.env.npm_package_version || '1.0.0',
+    ts:       new Date().toISOString(),
+    db:       dbStatus,
+    firebase: FIREBASE_READY ? 'ready' : 'disabled'
+  });
+});
+
+// 404 fallback
+app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }));
+
+// Global error handler
+app.use((err, _req, res, _next) => {
+  console.error('[server] Unhandled error:', err.message);
+  res.status(500).json({ success: false, error: 'Internal server error' });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Supabase connectivity check → start server → start cron
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function startServer() {
+  const supabase = require('./helpers/supabase');
+
+  // Quick connectivity ping (non-fatal — server starts even if Supabase is unreachable)
+  const { error } = await supabase.from('devices').select('id', { count: 'exact', head: true });
+  if (error) {
+    console.warn('[supabase] ⚠️  Connection failed:', error.message);
+    console.warn('[supabase] ⚠️  Server will start but DB-dependent endpoints may fail.');
+    console.warn('[supabase] ⚠️  Check SUPABASE_URL / SUPABASE_SERVICE_KEY in .env');
+  } else {
+    console.log('[supabase] Connected to Supabase ✓');
+  }
+
+  app.listen(PORT, () => {
+    console.log(`[server] Listening on port ${PORT}`);
+    console.log(`[server] Admin UI  → http://localhost:${PORT}/admin`);
+    console.log(`[server] Health    → http://localhost:${PORT}/health`);
+    console.log(`[server] Device API: /api/device/{register,heartbeat,tamper,status,fcm-token}`);
+    console.log(`[server] M-Pesa API: /api/mpesa/{stk-push,callback}`);
+    console.log(`[server] Admin API:  /api/admin/{devices,loans,tamper-logs,command}`);
+    startPaymentScheduler();
+  });
+}
+
+startServer().catch(err => {
+  console.error('[server] Fatal startup error:', err.message);
+  process.exit(1);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Graceful shutdown
+// ─────────────────────────────────────────────────────────────────────────────
+process.on('SIGTERM', () => { console.log('[server] SIGTERM — shutting down'); process.exit(0); });
+process.on('uncaughtException',  (err) => console.error('[server] Uncaught exception:', err.message));
+process.on('unhandledRejection', (r)   => console.error('[server] Unhandled rejection:', r));
