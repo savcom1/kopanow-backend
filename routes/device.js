@@ -287,5 +287,43 @@ router.post('/fcm-token', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/device/details
+// Called by KopanowApi.getLoanDetails() to show balance/status on MainActivity.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/details', async (req, res) => {
+  try {
+    const { borrower_id, loan_id } = req.query;
+    if (!borrower_id || !loan_id) {
+      return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
+    }
+
+    const { data: loan, error } = await supabase
+      .from('loans')
+      .select('outstanding_amount, next_due_date, device_status')
+      .eq('loan_id', loan_id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    const due = loan.next_due_date ? new Date(loan.next_due_date).toLocaleDateString('en-TZ', {
+      day: 'numeric', month: 'short', year: 'numeric'
+    }) : null;
+
+    return res.json({
+      success:       true,
+      loan_status:   loan.device_status || 'active',
+      balance:       loan.outstanding_amount != null
+                       ? `TSh ${Number(loan.outstanding_amount).toLocaleString()}` : null,
+      next_due_date: due,
+      message:       'Loan details fetched'
+    });
+  } catch (err) {
+    console.error('[device:details]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
 
