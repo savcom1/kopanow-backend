@@ -1,92 +1,106 @@
 # ============================================================
 # Kopanow — Device Owner Setup Script
-# Run this ONCE per device before any Google accounts are added
+# Run this ONCE per device BEFORE giving it to the borrower
 # ============================================================
 
-$adb = "C:\Users\casto\AppData\Local\Android\Sdk\platform-tools\adb.exe"
-$pkg = "com.kopanow"
-$admin = ".KopanowAdminReceiver"
+$adb   = "C:\Users\casto\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+$pkg   = "com.kopanow"
+$admin = "com.kopanow/.KopanowAdminReceiver"
+$apk   = "$PSScriptRoot\app\build\outputs\apk\debug\app-debug.apk"
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
 Write-Host "  Kopanow Device Owner Setup" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Check device connected
+# ── Step 1: Check device connected ───────────────────────────────────────────
 Write-Host "Step 1: Checking connected devices..." -ForegroundColor Yellow
-$devices = & $adb devices | Select-String "device$"
-if (-not $devices) {
-    Write-Host "✗ No device connected!" -ForegroundColor Red
-    Write-Host "  → Connect the phone via USB" -ForegroundColor White
-    Write-Host "  → Enable USB Debugging: Settings > Developer Options > USB Debugging" -ForegroundColor White
-    Write-Host "  → Accept the 'Allow USB Debugging' prompt on the phone" -ForegroundColor White
+$deviceList = & $adb devices 2>&1
+$connected  = $deviceList | Select-String "device$"
+if (-not $connected) {
+    Write-Host "  [FAIL] No device connected!" -ForegroundColor Red
+    Write-Host "  -> Plug the phone in via USB" -ForegroundColor White
+    Write-Host "  -> Go to Settings > Developer Options > USB Debugging > ON" -ForegroundColor White
+    Write-Host "  -> Tap 'Allow' on the phone when prompted" -ForegroundColor White
     exit 1
 }
-Write-Host "✓ Device found: $devices" -ForegroundColor Green
+Write-Host "  [OK] Device connected" -ForegroundColor Green
 
-# 2. Check if app is installed
+# ── Step 2: Install APK ───────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "Step 2: Checking if Kopanow is installed..." -ForegroundColor Yellow
-$installed = & $adb shell pm list packages | Select-String $pkg
-if (-not $installed) {
-    Write-Host "✗ Kopanow app not installed yet!" -ForegroundColor Red
-    Write-Host "  → Install the APK first, then re-run this script" -ForegroundColor White
+Write-Host "Step 2: Installing Kopanow APK..." -ForegroundColor Yellow
+if (-not (Test-Path $apk)) {
+    Write-Host "  [FAIL] APK not found at: $apk" -ForegroundColor Red
+    Write-Host "  -> Build the APK first in Android Studio (Build > Build APK)" -ForegroundColor White
     exit 1
 }
-Write-Host "✓ Kopanow installed" -ForegroundColor Green
+$installResult = & $adb install -r $apk 2>&1
+if ($installResult -match "Success") {
+    Write-Host "  [OK] APK installed" -ForegroundColor Green
+} else {
+    Write-Host "  [WARN] Install may have failed: $installResult" -ForegroundColor Yellow
+    Write-Host "  -> Continuing anyway (app might already be installed)" -ForegroundColor White
+}
 
-# 3. Check Google accounts (must be zero for set-device-owner to work)
+# ── Step 3: Check existing Device Owner ───────────────────────────────────────
 Write-Host ""
-Write-Host "Step 3: Checking Google accounts on device..." -ForegroundColor Yellow
-$accounts = & $adb shell dumpsys account | Select-String "Account {name=" | Select-String "google"
-if ($accounts) {
-    Write-Host "✗ Google accounts found on device!" -ForegroundColor Red
-    Write-Host "  Device Owner can only be set on a device with NO Google accounts." -ForegroundColor White
-    Write-Host "  Options:" -ForegroundColor White
-    Write-Host "  a) Factory reset the device (wipes all data)" -ForegroundColor White
-    Write-Host "  b) Remove all Google accounts: Settings > Accounts > Google > Remove" -ForegroundColor White
-    Write-Host "  Then re-run this script." -ForegroundColor White
+Write-Host "Step 3: Checking Device Owner status..." -ForegroundColor Yellow
+$ownerResult = & $adb shell dpm list-owners 2>&1
+if ($ownerResult -match $pkg) {
+    Write-Host "  [OK] Kopanow is ALREADY Device Owner!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "  Accounts found:" -ForegroundColor Yellow
-    $accounts | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
-    exit 1
-}
-Write-Host "✓ No Google accounts — safe to set Device Owner" -ForegroundColor Green
-
-# 4. Check current Device Owner
-Write-Host ""
-Write-Host "Step 4: Checking current Device Owner..." -ForegroundColor Yellow
-$currentOwner = & $adb shell dpm list-owners 2>&1
-Write-Host "  Current owner status: $currentOwner" -ForegroundColor Gray
-if ($currentOwner -like "*$pkg*") {
-    Write-Host "✓ Kopanow is ALREADY the Device Owner! Nothing to do." -ForegroundColor Green
+    Write-Host "====================================" -ForegroundColor Green
+    Write-Host "  ALREADY SET UP — NOTHING TO DO" -ForegroundColor Green
+    Write-Host "====================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "System PIN is ready. Send SET_SYSTEM_PIN from the admin panel." -ForegroundColor Cyan
+    Write-Host "System PIN is ready. Use the admin panel to lock this device." -ForegroundColor Cyan
     exit 0
 }
 
-# 5. Set Device Owner
+# ── Step 4: Check Google accounts ─────────────────────────────────────────────
+Write-Host ""
+Write-Host "Step 4: Checking Google accounts..." -ForegroundColor Yellow
+$accountsRaw = & $adb shell dumpsys account 2>&1
+$googleAccounts = $accountsRaw | Select-String "google.com"
+if ($googleAccounts) {
+    Write-Host "  [FAIL] Google account detected on device!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Device Owner can only be set BEFORE Google accounts are added." -ForegroundColor White
+    Write-Host "  You have two options:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  OPTION A (Recommended): Factory reset the device" -ForegroundColor Yellow
+    Write-Host "    Settings > General Management > Reset > Factory Data Reset" -ForegroundColor White
+    Write-Host "    Then re-run this script after reset completes." -ForegroundColor White
+    Write-Host ""
+    Write-Host "  OPTION B: Remove Google account" -ForegroundColor Yellow
+    Write-Host "    Settings > Accounts and Backup > Manage Accounts > Google > Remove" -ForegroundColor White
+    Write-Host "    Then re-run this script." -ForegroundColor White
+    exit 1
+}
+Write-Host "  [OK] No Google accounts — safe to set Device Owner" -ForegroundColor Green
+
+# ── Step 5: Set Device Owner ──────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Step 5: Setting Kopanow as Device Owner..." -ForegroundColor Yellow
-$result = & $adb shell dpm set-device-owner "$pkg/$admin" 2>&1
-if ($result -like "*Success*") {
-    Write-Host "✓ Device Owner set successfully!" -ForegroundColor Green
+$doResult = & $adb shell dpm set-device-owner $admin 2>&1
+if ($doResult -match "Success") {
+    Write-Host "  [OK] Device Owner set!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "========================================" -ForegroundColor Green
+    Write-Host "====================================" -ForegroundColor Green
     Write-Host "  SETUP COMPLETE" -ForegroundColor Green
-    Write-Host "========================================" -ForegroundColor Green
+    Write-Host "====================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor Cyan
-    Write-Host "  1. Unlock the device screen once (activates the DPM reset token)" -ForegroundColor White
-    Write-Host "  2. Send SET_SYSTEM_PIN from the admin panel" -ForegroundColor White
-    Write-Host "  3. Check Logcat for: 'Reset token active ✓'" -ForegroundColor White
+    Write-Host "Next:" -ForegroundColor Cyan
+    Write-Host "  1. Register the borrower in the app (open Kopanow app)" -ForegroundColor White
+    Write-Host "  2. Unlock the phone screen once (activates DPM token)" -ForegroundColor White
+    Write-Host "  3. Hand phone to borrower" -ForegroundColor White
+    Write-Host "  4. Lock remotely via admin panel anytime" -ForegroundColor White
 } else {
-    Write-Host "✗ Failed to set Device Owner!" -ForegroundColor Red
-    Write-Host "  Error: $result" -ForegroundColor Red
+    Write-Host "  [FAIL] Could not set Device Owner" -ForegroundColor Red
+    Write-Host "  Error: $doResult" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Common fixes:" -ForegroundColor Yellow
-    Write-Host "  - Remove all Google accounts from the device first" -ForegroundColor White
-    Write-Host "  - Factory reset if accounts can't be removed" -ForegroundColor White
-    Write-Host "  - Make sure USB Debugging is enabled" -ForegroundColor White
+    Write-Host "  Most common fix: Factory reset the device first" -ForegroundColor White
+    Write-Host "  Settings > General Management > Reset > Factory Data Reset" -ForegroundColor White
+    exit 1
 }
