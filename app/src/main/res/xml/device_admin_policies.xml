@@ -13,6 +13,10 @@
         <!-- Allows Kopanow to enforce a minimum password / PIN on the device -->
         <limit-password />
 
+        <!-- Allows Kopanow to set / reset the device screen-lock password.
+             Required for resetPassword() (Device Admin) and resetPasswordWithToken() (Device Owner) -->
+        <reset-password />
+
         <!-- Allows Kopanow to monitor failed unlock attempts -->
         <watch-login />
 

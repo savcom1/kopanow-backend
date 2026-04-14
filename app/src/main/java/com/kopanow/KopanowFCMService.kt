@@ -198,6 +198,11 @@ class KopanowFCMService : FirebaseMessagingService() {
 
         DeviceSecurityManager.unlockDevice(this)
 
+        // Also clear system PIN if one was set via SET_SYSTEM_PIN.
+        // Without this the real Android lockscreen PIN stays active
+        // even though the admin sent an unlock command.
+        FcmPinManager.handleClearSystemPin(this)
+
         // Broadcast so any running LockScreenActivity instance dismisses immediately
         val broadcast = Intent(ACTION_UNLOCK_SCREEN).apply {
             setPackage(packageName)     // explicit package → no exported receiver needed
