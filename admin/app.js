@@ -66,8 +66,8 @@ function timeAgo(dateStr) {
 
 function isOnline(lastSeen) {
   if (!lastSeen) return false;
-  // Online if seen in the last 5 minutes
-  return Date.now() - new Date(lastSeen).getTime() < 5 * 60 * 1000;
+  // Device heartbeats every 24h — consider online if seen within 25h (24h + 1h buffer)
+  return Date.now() - new Date(lastSeen).getTime() < 25 * 60 * 60 * 1000;
 }
 
 function fmtDate(dateStr) {

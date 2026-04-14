@@ -121,7 +121,7 @@ router.post('/heartbeat', async (req, res) => {
       updates.is_locked = true;
       updates.lock_reason = 'Device fingerprint mismatch — possible SIM swap / cloning';
       updates.status = 'locked';
-      action = 'TAMPER_LOCK';   // ← tells Android: TAMPER lock, no pay button
+      action = 'LOCK';   // Android HeartbeatWorker only recognises LOCK / UNLOCK / REMOVE_ADMIN
 
       if (device.fcm_token) await sendLockCommand(device.fcm_token, updates.lock_reason, device.amount_due, 'TAMPER');
       await logTamper(borrower_id, loan_id, EVENT_TYPES.DEVICE_MISMATCH, {
@@ -135,7 +135,7 @@ router.post('/heartbeat', async (req, res) => {
       updates.is_locked = true;
       updates.lock_reason = 'Safe mode detected — possible bypass attempt';
       updates.status = 'locked';
-      action = 'TAMPER_LOCK';   // ← tamper lock
+      action = 'LOCK';   // Android HeartbeatWorker only recognises LOCK / UNLOCK / REMOVE_ADMIN
 
       if (device.fcm_token) await sendLockCommand(device.fcm_token, updates.lock_reason, device.amount_due, 'TAMPER');
       await logTamper(borrower_id, loan_id, EVENT_TYPES.SAFE_MODE_DETECTED, {
@@ -149,6 +149,11 @@ router.post('/heartbeat', async (req, res) => {
       await logTamper(borrower_id, loan_id, EVENT_TYPES.ADMIN_SILENT_REMOVE, {
         source: 'heartbeat', device_id, detail: 'DPC reported inactive but no REMOVE_ADMIN command sent'
       });
+    }
+    // ── Healthy heartbeat: promote 'registered' → 'active' ──────────────────
+    else if (dpc_active && device.status === 'registered') {
+      updates.status = 'active';
+      console.log(`[heartbeat] Status promoted: registered → active for borrower=${borrower_id}`);
     }
 
     // Persist heartbeat data
