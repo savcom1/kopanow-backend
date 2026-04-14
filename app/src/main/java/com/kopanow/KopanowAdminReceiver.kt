@@ -47,16 +47,23 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         super.onEnabled(context, intent)
         KopanowPrefs.isAdmin = true
 
-        // Whitelist this package for startLockTask() (kiosk mode)
-        // Required BEFORE startLockTask() can be called from LockScreenActivity
-        try {
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                    as android.app.admin.DevicePolicyManager
-            val admin = android.content.ComponentName(context, KopanowAdminReceiver::class.java)
-            dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
-            android.util.Log.i(TAG, "onEnabled: lock task packages set")
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "onEnabled: setLockTaskPackages failed: ${e.message}")
+        val dpm   = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        val admin = android.content.ComponentName(context, KopanowAdminReceiver::class.java)
+        val isDeviceOwner = dpm.isDeviceOwnerApp(context.packageName)
+
+        Log.i(TAG, "onEnabled: Device Admin active. Device Owner = $isDeviceOwner")
+
+        if (isDeviceOwner) {
+            // setLockTaskPackages() requires Device Owner — skip silently if not DO
+            try {
+                dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
+                Log.i(TAG, "onEnabled: lock task packages set (kiosk mode enabled) ✓")
+            } catch (e: Exception) {
+                Log.w(TAG, "onEnabled: setLockTaskPackages failed: ${e.message}")
+            }
+        } else {
+            Log.w(TAG, "onEnabled: NOT Device Owner — kiosk mode and system PIN will be unavailable. " +
+                    "To enable: adb shell dpm set-device-owner com.kopanow/.KopanowAdminReceiver")
         }
 
         enqueueTamperReport(context, "admin_enabled")

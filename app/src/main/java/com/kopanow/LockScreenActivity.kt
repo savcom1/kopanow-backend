@@ -38,7 +38,12 @@ import kotlinx.coroutines.withContext
  * Three modes:
  *  PAYMENT  → lock card + M-Pesa reference submission panel
  *  TAMPER   → lock card only (admin contact message, no payment)
- *  PASSCODE → lock card + PIN keypad (payment panel hidden)
+ *  PASSCODE → lock card + PIN keypad (shown when [PasscodeManager.hasActivePasscode] is true)
+ *
+ * System PIN (DevicePolicyManager.resetPasswordWithToken) is set in parallel by
+ * [SystemPinManager] whenever the admin triggers SET_SYSTEM_PIN.  This sets the
+ * REAL Android lockscreen PIN so the OS enforces security even outside the app.
+ * The in-app PIN keypad provides a secondary verification layer.
  */
 class LockScreenActivity : AppCompatActivity() {
 
@@ -64,7 +69,7 @@ class LockScreenActivity : AppCompatActivity() {
         }
     }
 
-    // PIN state
+    // PIN state (used when PASSCODE mode is active)
     private val pinBuffer   = StringBuilder()
     private var pinAttempts = 0
     private val pinDotViews = mutableListOf<View>()
@@ -160,7 +165,7 @@ class LockScreenActivity : AppCompatActivity() {
             else       -> "🔒 Device Locked"
         }
 
-        // Amount
+        // Amount due
         val tvAmt   = findViewById<TextView>(R.id.tv_amount_due)
         val tvLabel = findViewById<TextView>(R.id.tv_amount_label)
         val tvDays  = findViewById<TextView>(R.id.tv_days_overdue)
@@ -182,13 +187,13 @@ class LockScreenActivity : AppCompatActivity() {
 
         // Lock reason
         val reason = when {
-            isPasscode -> "Enter the 6-digit PIN provided by Kopanow support."
+            isPasscode -> "Enter the PIN provided by Kopanow support to unlock your device."
             isTamper   -> KopanowPrefs.lockReason ?: "Locked due to a security violation."
             else       -> KopanowPrefs.lockReason ?: "Please make a payment to unlock your device."
         }
         findViewById<TextView>(R.id.tv_lock_reason).text = reason
 
-        // Tamper: change icon colour
+        // Tamper: change icon colour to orange
         if (isTamper && !isPasscode) {
             val lockIcon = findViewById<android.widget.ImageView>(R.id.iv_lock_icon)
             lockIcon.setImageResource(android.R.drawable.ic_dialog_alert)
@@ -197,17 +202,18 @@ class LockScreenActivity : AppCompatActivity() {
             )
         }
 
-        // Support + emergency
+        // Support call button
         findViewById<MaterialButton>(R.id.btn_call_support).setOnClickListener {
             dismissKeyboard()
             startActivity(Intent(Intent.ACTION_DIAL, "tel:$SUPPORT_PHONE".toUri()))
         }
+        // Emergency dial
         findViewById<TextView>(R.id.tv_emergency).setOnClickListener {
             startActivity(Intent(Intent.ACTION_DIAL, "tel:$EMERGENCY_NUMBER".toUri()))
         }
 
-        // PIN keypad or payment panel
-        if (isPasscode) { showPinKeypad() } else { hidePinKeypad() }
+        // Show/hide PIN keypad based on mode
+        if (isPasscode) showPinKeypad() else hidePinKeypad()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -232,14 +238,12 @@ class LockScreenActivity : AppCompatActivity() {
             val ref    = etRef.text?.toString()?.trim()?.uppercase() ?: ""
             val amount = etAmount.text?.toString()?.toDoubleOrNull()
 
-            // Validate
             val tilRef = findViewById<TextInputLayout>(R.id.til_mpesa_ref)
             if (!Regex("^[A-Z0-9]{6,20}$").matches(ref)) {
                 tilRef.error = getString(R.string.lock_pay_invalid_ref)
                 return@setOnClickListener
             }
             tilRef.error = null
-
             dismissKeyboard()
             submitPaymentReference(ref, amount, btnSubmit, tvStatus, etRef, etAmount)
         }
@@ -280,11 +284,9 @@ class LockScreenActivity : AppCompatActivity() {
                     tvStatus.text      = getString(R.string.lock_pay_submitted)
                     tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, android.R.color.holo_green_light))
                     tvStatus.visibility = View.VISIBLE
-                    // Clear inputs after successful submit
                     etRef.setText("")
                     etAmount.setText("")
                 } else {
-                    // Handle specific duplicate cases
                     val statusCode = result.data?.status
                     val msg = when (statusCode) {
                         "pending"  -> getString(R.string.lock_pay_duplicate_pending)
@@ -325,15 +327,15 @@ class LockScreenActivity : AppCompatActivity() {
                         "${getString(R.string.lock_pay_status_rejected)}\n${latest.reviewerNote ?: ""}",
                         android.R.color.holo_red_light
                     )
-                    else       -> Pair(
+                    else -> Pair(
                         getString(R.string.lock_pay_status_pending),
                         android.R.color.darker_gray
                     )
                 }
-                tvStatus.text      = msg
+                tvStatus.text = msg
                 tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, color))
 
-                // If admin has verified, trigger a backend check that will unlock
+                // Payment verified → trigger backend unlock check immediately
                 if (latest.status == "verified") {
                     checkLockStateFromBackend(force = true)
                 }
@@ -342,7 +344,10 @@ class LockScreenActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PIN keypad
+    // PIN keypad (PASSCODE mode)
+    // Used when admin triggers SET_SYSTEM_PIN — device's real system lockscreen
+    // PIN (set via DevicePolicyManager.resetPasswordWithToken) is mirrored here
+    // so the borrower can also unlock via this in-app keypad.
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun showPinKeypad() {
@@ -356,48 +361,69 @@ class LockScreenActivity : AppCompatActivity() {
     }
 
     private fun setupPinKeypad() {
-        listOf(R.id.pin_btn_0, R.id.pin_btn_1, R.id.pin_btn_2, R.id.pin_btn_3,
-               R.id.pin_btn_4, R.id.pin_btn_5, R.id.pin_btn_6, R.id.pin_btn_7,
-               R.id.pin_btn_8, R.id.pin_btn_9).forEach { id ->
+        listOf(
+            R.id.pin_btn_0, R.id.pin_btn_1, R.id.pin_btn_2, R.id.pin_btn_3,
+            R.id.pin_btn_4, R.id.pin_btn_5, R.id.pin_btn_6, R.id.pin_btn_7,
+            R.id.pin_btn_8, R.id.pin_btn_9
+        ).forEach { id ->
             val btn = findViewById<MaterialButton>(id)
-            btn.setOnClickListener { onPinDigitPressed(btn.tag?.toString() ?: return@setOnClickListener) }
+            btn.setOnClickListener {
+                onPinDigitPressed(btn.tag?.toString() ?: return@setOnClickListener)
+            }
         }
         findViewById<MaterialButton>(R.id.pin_btn_backspace).setOnClickListener {
-            if (pinBuffer.isNotEmpty()) { pinBuffer.deleteCharAt(pinBuffer.length - 1); refreshDots(); hidePinError() }
+            if (pinBuffer.isNotEmpty()) {
+                pinBuffer.deleteCharAt(pinBuffer.length - 1)
+                refreshDots()
+                hidePinError()
+            }
         }
     }
 
     private fun onPinDigitPressed(digit: String) {
         if (pinBuffer.length >= PIN_LENGTH) return
-        pinBuffer.append(digit); refreshDots(); hidePinError()
+        pinBuffer.append(digit)
+        refreshDots()
+        hidePinError()
         if (pinBuffer.length == PIN_LENGTH) validatePin()
     }
 
     private fun validatePin() {
         val entered = pinBuffer.toString()
         if (PasscodeManager.validatePasscode(entered)) {
+            // Correct PIN — clear passcode state and also clear the system PIN
             KopanowPrefs.isPasscodeLocked = false
             KopanowPrefs.passcodeHash     = null
+            SystemPinManager.clearSystemPin(this)     // clear the real system lockscreen PIN too
             if (!KopanowPrefs.isLocked) {
                 safelyDismiss()
             } else {
                 hidePinKeypad()
                 setupLockCard()
                 setupPaymentPanel()
-                Toast.makeText(this, "PIN imekubaliwa. Fanya malipo ili kufungua simu kikamilifu.", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    "PIN imekubaliwa. Fanya malipo ili kufungua simu kikamilifu.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         } else {
             pinAttempts++
             showPinError()
             resetPinState()
             if (pinAttempts >= MAX_PIN_ATTEMPTS) {
+                // Too many wrong attempts — escalate to tamper
                 KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_TAMPER
                 activityScope.launch {
                     val bId = KopanowPrefs.borrowerId ?: return@launch
                     val lId = KopanowPrefs.loanId     ?: return@launch
                     KopanowApi.reportTamper(bId, lId, "REPEATED_WRONG_PIN")
                 }
-                Toast.makeText(this, "Majaribio mengi mabaya. Kopanow amearifiwa.", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    "Majaribio mengi mabaya. Kopanow amearifiwa.",
+                    Toast.LENGTH_LONG
+                ).show()
                 pinAttempts = 0
             }
         }
@@ -405,17 +431,21 @@ class LockScreenActivity : AppCompatActivity() {
 
     private fun refreshDots() {
         pinDotViews.forEachIndexed { i, dot ->
-            dot.setBackgroundResource(if (i < pinBuffer.length) R.drawable.pin_dot_filled else R.drawable.pin_dot_empty)
+            dot.setBackgroundResource(
+                if (i < pinBuffer.length) R.drawable.pin_dot_filled else R.drawable.pin_dot_empty
+            )
         }
     }
 
-    private fun resetPinState() { pinBuffer.clear(); refreshDots() }
-    private fun showPinError()  {
+    private fun resetPinState()  { pinBuffer.clear(); refreshDots() }
+    private fun showPinError()   {
         val tv = findViewById<TextView>(R.id.tv_pin_error)
         tv.visibility = View.VISIBLE
         Handler(Looper.getMainLooper()).postDelayed({ tv.visibility = View.GONE }, 2000)
     }
-    private fun hidePinError()  { findViewById<TextView>(R.id.tv_pin_error).visibility = View.GONE }
+    private fun hidePinError()   {
+        findViewById<TextView>(R.id.tv_pin_error).visibility = View.GONE
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Window / system flags
@@ -432,7 +462,9 @@ class LockScreenActivity : AppCompatActivity() {
             addAction(KopanowFCMService.ACTION_UNLOCK_SCREEN)
             addAction(FcmPinManager.ACTION_PASSCODE_CHANGED)
         }
-        ContextCompat.registerReceiver(this, unlockReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(
+            this, unlockReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     @Suppress("DEPRECATION")
@@ -456,8 +488,8 @@ class LockScreenActivity : AppCompatActivity() {
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_IMMERSIVE         or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_FULLSCREEN        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE   or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             )
         }
@@ -517,9 +549,12 @@ class LockScreenActivity : AppCompatActivity() {
     private fun bringToFront() {
         startActivity(
             Intent(this, LockScreenActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK        or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
             }
         )
     }
 }
-

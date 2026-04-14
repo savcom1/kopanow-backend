@@ -59,12 +59,25 @@ object SystemPinManager {
      *
      * @return true if the token was successfully set.
      */
+    /**
+     * Returns true if this app is the Device Owner.
+     * [resetPasswordWithToken] and [setResetPasswordToken] REQUIRE Device Owner.
+     * Device Admin alone is NOT sufficient.
+     *
+     * To enrol as Device Owner (one-time adb command before any accounts are added):
+     *   adb shell dpm set-device-owner com.kopanow/.KopanowAdminReceiver
+     */
+    fun isDeviceOwner(context: Context): Boolean =
+        dpm(context).isDeviceOwnerApp(context.packageName)
+
     fun initResetToken(context: Context): Boolean {
         val dpm   = dpm(context)
         val admin = adminComponent(context)
 
-        if (!dpm.isAdminActive(admin)) {
-            Log.w(TAG, "initResetToken: Device Admin not active")
+        // MUST be Device Owner — Device Admin alone cannot call setResetPasswordToken()
+        if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.e(TAG, "initResetToken: *** NOT a Device Owner *** — " +
+                    "run: adb shell dpm set-device-owner com.kopanow/.KopanowAdminReceiver")
             return false
         }
 
@@ -78,9 +91,13 @@ object SystemPinManager {
                 prefs(context).edit().putString(KEY_RESET_TOKEN, token.toHex()).apply()
                 Log.i(TAG, "initResetToken: token set ✓")
             } else {
-                Log.w(TAG, "initResetToken: setResetPasswordToken returned false")
+                Log.w(TAG, "initResetToken: setResetPasswordToken returned false — " +
+                        "token may already be active or a password quality policy is blocking it")
             }
             success
+        } catch (e: SecurityException) {
+            Log.e(TAG, "initResetToken: SecurityException — requires Device Owner: ${e.message}")
+            false
         } catch (e: Exception) {
             Log.e(TAG, "initResetToken: ${e.message}")
             false
@@ -131,8 +148,11 @@ object SystemPinManager {
         val dpm   = dpm(context)
         val admin = adminComponent(context)
 
-        if (!dpm.isAdminActive(admin)) {
-            Log.e(TAG, "activateSystemPin: Device Admin not active"); return false
+        // resetPasswordWithToken() REQUIRES Device Owner — not just Device Admin
+        if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.e(TAG, "activateSystemPin: *** NOT a Device Owner *** — system PIN cannot be set. " +
+                    "Enrol as DO first: adb shell dpm set-device-owner com.kopanow/.KopanowAdminReceiver")
+            return false
         }
 
         val tokenHex = prefs(context).getString(KEY_RESET_TOKEN, null)
@@ -223,8 +243,9 @@ object SystemPinManager {
         val dpm   = dpm(context)
         val admin = adminComponent(context)
 
-        if (!dpm.isAdminActive(admin)) {
-            Log.w(TAG, "clearSystemPin: Device Admin not active"); return false
+        // resetPasswordWithToken() REQUIRES Device Owner
+        if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.w(TAG, "clearSystemPin: not Device Owner — cannot clear system PIN via token"); return false
         }
 
         val tokenHex = prefs(context).getString(KEY_RESET_TOKEN, null)

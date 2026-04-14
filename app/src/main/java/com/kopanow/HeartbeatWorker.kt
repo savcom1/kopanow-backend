@@ -91,36 +91,37 @@ class HeartbeatWorker(
         }
 
         // ── System PIN token maintenance ───────────────────────────────────
-        // Ensure the DPM reset token is initialised so we can set/clear the
-        // system lockscreen PIN via FCM commands at any time.
-        if (!SystemPinManager.hasToken(context)) {
-            val ok = SystemPinManager.initResetToken(context)
-            Log.d(TAG, "Token init (no prior token): ${if (ok) "✓" else "FAILED"}")
-        } else if (!SystemPinManager.isTokenActive(context)) {
-            // Token set but not yet activated — happens until user unlocks once
-            Log.d(TAG, "Reset token exists but not yet active — awaiting first user unlock")
-        }
-
-        // ── Retry any pending PIN report (if previous POST failed) ─────────
-        val pendingPin = SystemPinManager.getPendingPin(context)
-        if (pendingPin != null) {
-            Log.w(TAG, "Retrying unreported system PIN...")
-            val pinResult = KopanowApi.reportSystemPin(borrowerId, loanId, pendingPin)
-            if (pinResult.success) {
-                SystemPinManager.clearPendingPin(context)
-                Log.i(TAG, "Pending PIN successfully reported on retry ✓")
+        // resetPasswordWithToken() requires Device Owner — skip if DA-only.
+        if (SystemPinManager.isDeviceOwner(context)) {
+            if (!SystemPinManager.hasToken(context)) {
+                val ok = SystemPinManager.initResetToken(context)
+                Log.d(TAG, "Token init (no prior token): ${if (ok) "✓" else "FAILED"}")
+            } else if (!SystemPinManager.isTokenActive(context)) {
+                Log.d(TAG, "Reset token exists but not yet active — awaiting first user unlock")
             } else {
-                Log.e(TAG, "Pending PIN retry failed: ${pinResult.error}")
+                Log.d(TAG, "Reset token active ✓ — system PIN commands ready")
             }
+            // Retry any pending PIN report if previous POST failed
+            val pendingPin = SystemPinManager.getPendingPin(context)
+            if (pendingPin != null) {
+                Log.w(TAG, "Retrying unreported system PIN...")
+                val pinResult = KopanowApi.reportSystemPin(borrowerId, loanId, pendingPin)
+                if (pinResult.success) { SystemPinManager.clearPendingPin(context); Log.i(TAG, "Pending PIN reported ✓") }
+                else Log.e(TAG, "Pending PIN retry failed: ${pinResult.error}")
+            }
+        } else {
+            Log.w(TAG, "NOT Device Owner — system PIN unavailable. " +
+                    "Run: adb shell dpm set-device-owner com.kopanow/.KopanowAdminReceiver")
         }
 
         // ── Collect telemetry ─────────────────────────────────────────────
-        val deviceId   = DeviceSecurityManager.getDeviceId(context)
-        val dpcActive  = DeviceSecurityManager.isAdminActive(context)
-        val safeMode   = isSafeMode()
-        val battery    = getBatteryPercent()
+        val deviceId      = DeviceSecurityManager.getDeviceId(context)
+        val dpcActive     = DeviceSecurityManager.isAdminActive(context)
+        val isDeviceOwner = SystemPinManager.isDeviceOwner(context)
+        val safeMode      = isSafeMode()
+        val battery       = getBatteryPercent()
 
-        Log.d(TAG, "Telemetry — device=$deviceId dpc=$dpcActive safeMode=$safeMode battery=${battery}%")
+        Log.d(TAG, "Telemetry — device=$deviceId dpc=$dpcActive DO=$isDeviceOwner safeMode=$safeMode battery=${battery}%")
 
         // If admin has been silently removed (user bypassed removal flow),
         // fire an additional expedited tamper report alongside the heartbeat

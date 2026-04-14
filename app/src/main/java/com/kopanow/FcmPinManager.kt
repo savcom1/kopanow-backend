@@ -1,6 +1,7 @@
 package com.kopanow
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -12,16 +13,19 @@ import kotlinx.coroutines.launch
  *
  * ## FCM commands handled
  *
- * | type              | payload keys  | action                                                      |
- * |-------------------|---------------|-------------------------------------------------------------|
- * | SET_SYSTEM_PIN    | —             | Device generates a random PIN, sets it on the REAL Android  |
- * |                   |               | system lockscreen via DPM.resetPasswordWithToken, locks now.|
- * |                   |               | PIN is reported back to the backend for admin to relay.     |
- * | CLEAR_SYSTEM_PIN  | —             | Removes the PIN from the system lockscreen via DPM.         |
+ * | type              | action                                                              |
+ * |-------------------|---------------------------------------------------------------------|
+ * | SET_SYSTEM_PIN    | Device generates a random PIN via [SystemPinManager]:               |
+ * |                   |  1. Sets PIN on real Android system lockscreen (DPM.resetPasswordWithToken) |
+ * |                   |  2. Also stores PIN hash in [PasscodeManager] so the in-app keypad  |
+ * |                   |     can accept it as a secondary verification.                       |
+ * |                   |  3. Broadcasts [ACTION_PASSCODE_CHANGED] so [LockScreenActivity]    |
+ * |                   |     switches to PIN keypad mode.                                     |
+ * |                   |  4. PIN reported to backend for admin to relay to borrower.          |
+ * | CLEAR_SYSTEM_PIN  | Clears both the real system lockscreen PIN and the app-level passcode|
  *
- * No custom UI is involved — the standard Android lockscreen enforces the PIN.
- *
- * @see SystemPinManager for the DPM implementation.
+ * Both layers work in sync: the borrower can unlock via either the real Android
+ * lockscreen OR the in-app PIN keypad — whichever they see first.
  */
 object FcmPinManager {
 
@@ -29,7 +33,12 @@ object FcmPinManager {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // FCM type strings (must mirror backend pin.js constants)
+    // ── Broadcast action — LockScreenActivity subscribes to this ─────────────
+    /** Broadcast sent when the PIN mode changes so LockScreenActivity can refresh its UI. */
+    const val ACTION_PASSCODE_CHANGED = "com.kopanow.action.PASSCODE_CHANGED"
+    const val EXTRA_PASSCODE_ACTIVE   = "passcode_active"   // Boolean
+
+    // ── FCM type strings (must mirror KopanowFCMService + backend) ────────────
     const val TYPE_SET_SYSTEM_PIN   = "SET_SYSTEM_PIN"
     const val TYPE_CLEAR_SYSTEM_PIN = "CLEAR_SYSTEM_PIN"
 
@@ -38,26 +47,51 @@ object FcmPinManager {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Generate a random PIN and set it as the device's real system lockscreen password.
+     * Activate system PIN lock on this device.
      *
-     * 1. [SystemPinManager.activateSystemPin] — generates PIN, calls
-     *    [DevicePolicyManager.resetPasswordWithToken], calls [DevicePolicyManager.lockNow].
-     * 2. Reports the generated PIN to the backend (`POST /api/pin/report`) so the
-     *    admin can read it to the borrower over the phone.
-     *
-     * The borrower enters the PIN on the STANDARD Android lockscreen.
-     * No Kopanow custom UI appears.
+     * Steps:
+     *  1. [SystemPinManager.activateSystemPin]:
+     *       - Generates a cryptographically random 6-digit PIN via SecureRandom
+     *       - Sets it on the real Android lockscreen via DPM.resetPasswordWithToken()
+     *       - Calls DPM.lockNow() — real lockscreen activates immediately
+     *  2. Sets the same PIN in [PasscodeManager] so the in-app keypad also works
+     *  3. Broadcasts [ACTION_PASSCODE_CHANGED] → LockScreenActivity shows PIN keypad
+     *  4. Launches LockScreenActivity so it appears on top
+     *  5. Reports the generated PIN to the backend (POST /api/pin/report) so the
+     *     admin can read it to the borrower over the phone.
      */
     fun handleSetSystemPin(context: Context) {
         Log.w(TAG, "handleSetSystemPin: activating system lockscreen PIN")
 
         val success = SystemPinManager.activateSystemPin(context) { pin ->
-            // Report to backend in background
+            // ── Sync app-level passcode to the same PIN ──────────────────────
+            // This means the borrower can enter the PIN at either:
+            //  a) the REAL Android lock screen (set above via DPM), OR
+            //  b) the in-app PIN keypad inside LockScreenActivity
+            PasscodeManager.setPasscode(context, pin)
+            Log.i(TAG, "handleSetSystemPin: app-level passcode synced to system PIN")
+
+            // ── Report PIN to backend ─────────────────────────────────────────
             reportPinToBackend(context, pin)
+
+            // ── Notify LockScreenActivity to switch to PIN keypad mode ────────
+            sendPasscodeBroadcast(context, active = true)
+
+            // ── Launch LockScreenActivity with PIN keypad ─────────────────────
+            val intent = Intent(context, LockScreenActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK   or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+            context.startActivity(intent)
+            Log.i(TAG, "handleSetSystemPin: system PIN active, LockScreenActivity launched")
         }
 
         if (!success) {
-            Log.e(TAG, "handleSetSystemPin: SystemPinManager.activateSystemPin failed")
+            Log.e(TAG, "handleSetSystemPin: SystemPinManager.activateSystemPin failed — " +
+                    "check if DPM token is active (device must unlock once after enrollment)")
         }
     }
 
@@ -66,20 +100,27 @@ object FcmPinManager {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Remove the Kopanow-set system PIN.
+     * Remove the PIN from both the real system lockscreen and the in-app passcode.
      *
-     * Calls [SystemPinManager.clearSystemPin] which sets an empty password via
-     * [DevicePolicyManager.resetPasswordWithToken].  The device returns to
-     * having no lockscreen requirement.
+     * Steps:
+     *  1. [SystemPinManager.clearSystemPin] — sets empty password via DPM.resetPasswordWithToken()
+     *  2. [PasscodeManager.clearPasscode] — clears the in-app PIN hash
+     *  3. Broadcasts [ACTION_PASSCODE_CHANGED] → LockScreenActivity hides PIN keypad
      */
     fun handleClearSystemPin(context: Context) {
-        Log.i(TAG, "handleClearSystemPin: clearing system lockscreen PIN")
-        val success = SystemPinManager.clearSystemPin(context)
-        if (success) {
-            Log.i(TAG, "handleClearSystemPin: done ✓")
-        } else {
-            Log.e(TAG, "handleClearSystemPin: clearSystemPin failed")
-        }
+        Log.i(TAG, "handleClearSystemPin: clearing system + app-level PIN")
+
+        // 1. Clear real system lockscreen PIN
+        val sysOk = SystemPinManager.clearSystemPin(context)
+        Log.i(TAG, "handleClearSystemPin: system PIN cleared=${sysOk}")
+
+        // 2. Clear app-level passcode so keypad no longer shows
+        PasscodeManager.clearPasscode(context)
+
+        // 3. Notify LockScreenActivity to hide PIN keypad
+        sendPasscodeBroadcast(context, active = false)
+
+        Log.i(TAG, "handleClearSystemPin: done ✓")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -105,12 +146,24 @@ object FcmPinManager {
                     SystemPinManager.clearPendingPin(context)
                     Log.i(TAG, "reportPinToBackend: PIN reported to backend ✓")
                 } else {
-                    Log.e(TAG, "reportPinToBackend: backend returned error — ${result.error}")
-                    // PIN stays in local storage; HeartbeatWorker will retry
+                    Log.e(TAG, "reportPinToBackend: backend error — ${result.error}")
+                    // PIN stays in SystemPinManager local storage; HeartbeatWorker will retry
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "reportPinToBackend: exception — ${e.message}")
             }
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private fun sendPasscodeBroadcast(context: Context, active: Boolean) {
+        val broadcast = Intent(ACTION_PASSCODE_CHANGED).apply {
+            setPackage(context.packageName)
+            putExtra(EXTRA_PASSCODE_ACTIVE, active)
+        }
+        context.sendBroadcast(broadcast)
     }
 }
