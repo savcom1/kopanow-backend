@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kopanow — Device Provisioning</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 { font-size: 28px; font-weight: 700; color: #60a5fa; margin-bottom: 6px; }
+    .subtitle { color: #94a3b8; font-size: 15px; margin-bottom: 40px; }
+    .card {
+      background: #1e2332;
+      border: 1px solid #2d3748;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 600px;
+      width: 100%;
+      margin-bottom: 24px;
+    }
+    .card h2 { font-size: 18px; color: #f1f5f9; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+    .qr-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 24px;
+      background: #fff;
+      border-radius: 12px;
+    }
+    #qr-canvas { border-radius: 8px; }
+    .qr-label { color: #1e2332; font-size: 13px; font-weight: 600; text-align: center; }
+    .steps { list-style: none; counter-reset: step; }
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid #2d3748;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: counter(step);
+      min-width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .highlight { color: #60a5fa; font-weight: 600; }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.usb   { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+    .badge.no-usb { background: #05966922; color: #34d399; border: 1px solid #05966944; }
+    .status-box {
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .status-box.ok    { background: #05966920; border: 1px solid #34d399; color: #34d399; }
+    .status-box.warn  { background: #d9770620; border: 1px solid #f59e0b; color: #fbbf24; }
+    .status-box.error { background: #dc262620; border: 1px solid #f87171; color: #fca5a5; }
+    button {
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: none;
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    button:hover { background: #2563eb; }
+    .back-link { color: #60a5fa; font-size: 14px; text-decoration: none; margin-bottom: 24px; align-self: flex-start; }
+    .back-link:hover { text-decoration: underline; }
+    .info-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; font-size: 13px; color: #94a3b8; margin-top: 8px; }
+    .info-row code { background: #0f1117; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #a78bfa; }
+  </style>
+</head>
+<body>
+
+  <a href="/admin" class="back-link">← Back to Admin Panel</a>
+  <h1>📱 Device Provisioning</h1>
+  <p class="subtitle">Set up borrower phones as Device Owner — fully remote locking enabled</p>
+
+  <!-- QR Code card -->
+  <div class="card">
+    <h2>🔲 QR Code Provisioning <span class="badge no-usb">No USB required</span></h2>
+    <div class="qr-wrapper">
+      <canvas id="qr-canvas"></canvas>
+      <div class="qr-label">Scan during Android setup wizard</div>
+    </div>
+    <div id="qr-status" class="status-box warn" style="margin-top:16px">
+      Loading provisioning data…
+    </div>
+    <button onclick="window.print()">🖨️ Print QR Code</button>
+  </div>
+
+  <!-- How to use the QR code -->
+  <div class="card">
+    <h2>📋 How to provision a phone (QR — no USB)</h2>
+    <ol class="steps">
+      <li>
+        <span>
+          <strong>Factory reset</strong> the borrower's phone<br/>
+          <span class="highlight">Settings → General Management → Reset → Factory Data Reset</span>
+        </span>
+      </li>
+      <li>
+        <span>
+          On the <strong>Welcome / Hi there</strong> screen, 
+          <span class="highlight">tap the screen 6 times quickly</span><br/>
+          The phone will open the QR code scanner
+        </span>
+      </li>
+      <li>
+        <span>
+          <strong>Scan the QR code</strong> above. The phone will:<br/>
+          • Connect to the internet<br/>
+          • Download and install the Kopanow app automatically<br/>
+          • Set Kopanow as Device Owner (deep lock enabled)
+        </span>
+      </li>
+      <li>
+        <span>
+          <strong>Open the Kopanow app</strong> and register the borrower (name, ID, loan ID)
+        </span>
+      </li>
+      <li>
+        <span>
+          <strong>Hand phone to borrower.</strong> All future locking is remote via this admin panel.
+        </span>
+      </li>
+    </ol>
+  </div>
+
+  <!-- USB option -->
+  <div class="card">
+    <h2>🔌 Alternative: USB Setup <span class="badge usb">USB required</span></h2>
+    <ol class="steps">
+      <li>Factory reset the phone and complete Android setup (skip Google account)</li>
+      <li>Enable <strong>USB Debugging</strong>: Settings → Developer Options → USB Debugging</li>
+      <li>Plug phone into your laptop via USB</li>
+      <li>In PowerShell from the project folder, run: <br/><code>.\setup_device_owner.ps1</code></li>
+      <li>Open Kopanow app, register borrower, hand to borrower</li>
+    </ol>
+  </div>
+
+  <script>
+    async function loadQr() {
+      const statusEl = document.getElementById('qr-status');
+      try {
+        const res  = await fetch('/api/provision/info');
+        const data = await res.json();
+
+        if (!data.success) {
+          statusEl.textContent = '✗ Failed to load provisioning data';
+          statusEl.className   = 'status-box error';
+          return;
+        }
+
+        const checksum = data.payload['android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM'];
+        if (!checksum) {
+          statusEl.innerHTML = '⚠️ APK checksum not configured.<br/>' +
+            'Set <code>APK_SHA256_BASE64URL</code> in your Render environment variables.<br/>' +
+            'Current checksum: <code>c5UlSvSOhzBtk21UHI3bvZ7822bnfhQ_FgowylvaRzg</code>';
+          statusEl.className = 'status-box warn';
+        } else {
+          statusEl.innerHTML = '✓ Provisioning QR code ready — print and laminate for your team';
+          statusEl.className = 'status-box ok';
+        }
+
+        // Generate QR code from the provisioning JSON
+        const qrData = JSON.stringify(data.payload);
+        QRCode.toCanvas(document.getElementById('qr-canvas'), qrData, {
+          width: 280,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' }
+        }, (err) => {
+          if (err) {
+            statusEl.textContent = '✗ QR generation failed: ' + err.message;
+            statusEl.className   = 'status-box error';
+          }
+        });
+
+      } catch (e) {
+        statusEl.textContent = '✗ Network error: ' + e.message;
+        statusEl.className   = 'status-box error';
+      }
+    }
+
+    loadQr();
+  </script>
+</body>
+</html>

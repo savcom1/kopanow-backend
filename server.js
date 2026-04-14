@@ -47,10 +47,11 @@ const FIREBASE_READY = (() => {
 // 2. Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-const deviceRoutes  = require('./routes/device');
-const paymentRoutes = require('./routes/payment-reference');
-const adminRoutes   = require('./routes/admin');
-const pinRoutes     = require('./routes/pin');
+const deviceRoutes    = require('./routes/device');
+const paymentRoutes   = require('./routes/payment-reference');
+const adminRoutes     = require('./routes/admin');
+const pinRoutes       = require('./routes/pin');
+const provisionRoutes = require('./routes/provision');
 const { startPaymentScheduler } = require('./cron/jobs');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,10 +63,23 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.use('/api/device',  deviceRoutes);
-app.use('/api/payment', paymentRoutes);  // payment reference submission
-app.use('/api/admin',   adminRoutes);
-app.use('/api/pin',     pinRoutes);      // PIN / passcode management
+app.use('/api/device',    deviceRoutes);
+app.use('/api/payment',   paymentRoutes);
+app.use('/api/admin',     adminRoutes);
+app.use('/api/pin',       pinRoutes);
+app.use('/api/provision', provisionRoutes);
+
+// Serve APK for QR-code provisioning downloads
+// Place the signed APK at ./public/kopanow.apk  OR set APK_DOWNLOAD_URL to an external URL
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.get('/kopanow.apk', (_req, res) => {
+  const apkPath = path.join(__dirname, 'public', 'kopanow.apk');
+  if (require('fs').existsSync(apkPath)) {
+    res.download(apkPath, 'kopanow.apk');
+  } else {
+    res.status(404).json({ error: 'APK not uploaded yet. Place kopanow.apk in /public/' });
+  }
+});
 
 // Admin dashboard static files
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
@@ -76,7 +90,8 @@ app.get('/', (_req, res) => res.json({
   status:  'running',
   admin:   '/admin',
   health:  '/health',
-  api:     '/api/device | /api/admin | /api/payment | /api/pin'
+  api:     '/api/device | /api/admin | /api/payment | /api/pin | /api/provision',
+  provision: '/admin/provision.html'
 }));
 
 // Health endpoint
