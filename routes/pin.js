@@ -21,7 +21,7 @@ function sha256(str) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/admin/pin/set
+// POST /api/pin/set
 //
 // Generate a PIN for a device, push it via FCM, and store the hash in Supabase.
 // The raw PIN is returned ONCE to the admin dashboard so support staff can
@@ -96,7 +96,7 @@ router.post('/set', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/admin/pin/clear
+// POST /api/pin/clear
 //
 // Remove the PIN from the device and update Supabase.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,11 +123,25 @@ router.post('/clear', async (req, res) => {
     const fcmResult = await sendDeviceCommand(device.fcm_token, COMMANDS.CLEAR_PASSCODE, {});
 
     // Clear DB record regardless of FCM result (next heartbeat will sync)
+    const clearNow = new Date().toISOString();
     await supabase.from('devices').update({
       passcode_hash:   null,
       passcode_active: false,
-      updated_at:      new Date().toISOString()
+      updated_at:      clearNow
     }).eq('id', device.id);
+
+    // Audit log — non-blocking, best-effort
+    supabase.from('tamper_logs').insert({
+      borrower_id: device.borrower_id,
+      loan_id:     device.loan_id,
+      event_type:  'PASSCODE_CLEARED',
+      severity:    'LOW',
+      detail:      'Admin cleared the device passcode',
+      reviewed:    true,          // auto-reviewed: routine admin action
+      created_at:  clearNow
+    }).then(({ error }) => {
+      if (error) console.warn('[pin:clear] audit log failed:', error.message);
+    });
 
     console.log(`[pin:clear] PIN cleared — device=${device.id} fcm=${fcmResult.success}`);
 
@@ -146,7 +160,7 @@ router.post('/clear', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/admin/pin/status/:deviceId
+// GET /api/pin/status/:deviceId
 //
 // Returns whether a passcode is currently active on a device.
 // Does NOT return the hash or the raw PIN.

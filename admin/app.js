@@ -105,24 +105,34 @@ const TAMPER_ICONS = {
   ADMIN_REMOVAL_SENT:  '🗑️',
   MANUAL_FLAG:         '🚩',
   HEARTBEAT_FAILED:    '❌',
-  LOCK_BYPASS_ATTEMPT: '🚨'
+  LOCK_BYPASS_ATTEMPT: '🚨',
+  PASSCODE_SET:        '🔑',   // admin issued a PIN to this device
+  PASSCODE_CLEARED:    '🗝️'   // admin cleared the PIN from this device
 };
 
 async function loadDashboard() {
   const search = $('#search-input')?.value?.trim() || '';
-  const data   = await apiFetch(`${API}/devices?limit=10&search=${encodeURIComponent(search)}`);
+  const data   = await apiFetch(`${API}/devices?limit=50&search=${encodeURIComponent(search)}`);
   if (!data.success) return;
 
   const s = data.summary || {};
-  $('#kpi-total').textContent       = s.total        ?? 0;
-  $('#kpi-active').textContent      = s.active       ?? 0;
-  $('#kpi-locked').textContent      = s.locked       ?? 0;
-  $('#kpi-unregistered').textContent = s.registered  ?? 0;
-  $('#kpi-removed').textContent     = s.admin_removed ?? 0;
-  $('#badge-locked').textContent    = s.locked       ?? 0;
+  $('#kpi-total').textContent        = s.total        ?? 0;
+  $('#kpi-active').textContent       = s.active       ?? 0;
+  $('#kpi-locked').textContent       = s.locked       ?? 0;
+  $('#kpi-unregistered').textContent = s.registered   ?? 0;
+  $('#kpi-removed').textContent      = s.admin_removed ?? 0;
+  $('#badge-locked').textContent     = s.locked       ?? 0;
 
   const tbody = $('#dash-tbody');
-  tbody.innerHTML = data.devices.map(d => `
+  // Sort client-side: put devices with last_seen first (most recent), then newly
+  // enrolled devices with null last_seen (sorted by updated_at desc)
+  const sorted = [...(data.devices || [])].sort((a, b) => {
+    const ta = new Date(a.last_seen || a.updated_at || 0).getTime();
+    const tb = new Date(b.last_seen || b.updated_at || 0).getTime();
+    return tb - ta;
+  }).slice(0, 10);
+
+  tbody.innerHTML = sorted.map(d => `
     <tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -133,8 +143,8 @@ async function loadDashboard() {
       <td class="mono">${d.loan_id}</td>
       <td>${d.device_model || '—'}</td>
       <td>${statusBadge(d.status)}</td>
-      <td class="text-muted">${timeAgo(d.last_seen)}</td>
-      <td>${d.loan ? `TZS ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
+      <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New — no heartbeat yet</span>'}</td>
+      <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
       <td>
         <div class="action-group">
           ${d.status !== 'locked'
@@ -149,12 +159,24 @@ async function loadDashboard() {
 async function loadDevices() {
   const search = $('#search-input')?.value?.trim() || '';
   const data   = await apiFetch(
-    `${API}/devices?status=${deviceFilter}&search=${encodeURIComponent(search)}&limit=50`
+    `${API}/devices?status=${deviceFilter}&search=${encodeURIComponent(search)}&limit=200`
   );
   if (!data.success) return;
 
   const tbody = $('#devices-tbody');
-  tbody.innerHTML = data.devices.map(d => `
+  if (!data.devices?.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
+    return;
+  }
+
+  // Sort: devices with real last_seen first, then by updated_at for new enrollments
+  const sorted = [...data.devices].sort((a, b) => {
+    const ta = new Date(a.last_seen || a.updated_at || 0).getTime();
+    const tb = new Date(b.last_seen || b.updated_at || 0).getTime();
+    return tb - ta;
+  });
+
+  tbody.innerHTML = sorted.map(d => `
     <tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -163,12 +185,13 @@ async function loadDevices() {
         </div>
       </td>
       <td class="mono">${d.loan_id}</td>
-      <td class="mono text-muted">${(d.device_id||'').slice(0,12)}…</td>
+      <td class="mono text-muted">${d.device_id ? d.device_id.slice(0,12) + '…' : '—'}</td>
       <td>${d.device_model || '—'}</td>
       <td>${statusBadge(d.status)}</td>
-      <td class="text-muted">${timeAgo(d.last_seen)}</td>
+      <td>${d.dpc_active ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</td>
+      <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New</span>'}</td>
       <td>${d.loan?.days_overdue > 0 ? `<span style="color:var(--red)">${d.loan.days_overdue}d</span>` : '—'}</td>
-      <td>${d.loan ? `TZS ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
+      <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
       <td>
         <div class="action-group">
           ${d.status !== 'locked'
@@ -307,7 +330,7 @@ async function setPinForDevice() {
   if (result.success) {
     el.textContent = '✓ PIN sent to device via FCM';
     el.className   = 'cmd-result';
-    toast('PIN sent! Show the code below to borrower's support call.', 'success');
+    toast(`PIN sent! Show the code below to the borrower's support call.`, 'success');
 
     // Show reveal box
     const box       = $('#pin-reveal-box');
@@ -438,7 +461,7 @@ async function loadPayments() {
       <td><strong>${r.borrower_id}</strong></td>
       <td class="mono">${r.loan_id}</td>
       <td class="mono" style="font-size:14px;letter-spacing:.05em">${r.mpesa_ref}</td>
-      <td>KES ${r.amount_claimed ? Number(r.amount_claimed).toLocaleString() : '—'}</td>
+      <td>TSh ${r.amount_claimed ? Number(r.amount_claimed).toLocaleString() : '—'}</td>
       <td class="text-muted">${timeAgo(r.submitted_at)}</td>
       <td>${payStatusBadge(r.status)}</td>
       <td>
@@ -537,6 +560,22 @@ document.addEventListener('DOMContentLoaded', () => {
       tamperSevFilter = chip.dataset.sev;
       $$('#view-tamper .chip[data-sev]').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
+      loadTamperLog();
+    });
+  });
+
+  // Unreviewed toggle chip — fixes broken filter that had no listener
+  $$('#view-tamper .chip[data-reviewed]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const isActive = chip.classList.contains('active');
+      if (isActive) {
+        // toggle off → show all
+        tamperRevFilter = null;
+        chip.classList.remove('active');
+      } else {
+        tamperRevFilter = chip.dataset.reviewed; // 'false' → only unreviewed
+        chip.classList.add('active');
+      }
       loadTamperLog();
     });
   });
