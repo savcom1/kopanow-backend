@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Theme.MyApplication — parent is Theme.MaterialComponents.NoActionBar so that:
+          • AppCompatActivity (MainActivity, LockScreenActivity) renders correctly
+          • Material components (MaterialButton, etc.) on LockScreen work without
+            "You need to use a Theme.AppCompat or Theme.MaterialComponents" crash
+    -->
+    <style name="Theme.MyApplication" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+
+    <!--
+        Widget.Kopanow.PinKey — style for the PIN keypad digit buttons.
+        64 × 64 dp, rounded square, semi-transparent dark background,
+        white bold text.  Margins create a comfortable tap target grid.
+    -->
+    <style name="Widget.Kopanow.PinKey" parent="Widget.MaterialComponents.Button">
+        <item name="android:layout_width">64dp</item>
+        <item name="android:layout_height">64dp</item>
+        <item name="android:layout_margin">6dp</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textStyle">bold</item>
+        <item name="backgroundTint">#33FFFFFF</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+    </style>
+</resources>

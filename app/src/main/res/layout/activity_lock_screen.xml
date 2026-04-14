@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_lock_screen.xml
+
+    Three display modes (toggled by LockScreenActivity):
+      PAYMENT  → card + payment reference panel (ref input + submit)
+      TAMPER   → card only (admin-contact message, no payment panel)
+      PASSCODE → card + PIN keypad (payment panel hidden)
+-->
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/lock_screen_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/lock_bg"
+    android:fillViewport="true"
+    android:keepScreenOn="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingBottom="40dp">
+
+        <!-- ── Kopanow wordmark ── -->
+        <TextView
+            android:id="@+id/tv_brand"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="44dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.12"
+            android:text="@string/app_name"
+            android:textColor="@color/lock_brand"
+            android:textSize="14sp" />
+
+        <!-- ════════════ LOCK CARD ════════════ -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_lock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="20dp"
+            app:cardBackgroundColor="@color/lock_card_bg"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="24dp"
+                android:paddingTop="36dp"
+                android:paddingBottom="28dp">
+
+                <ImageView
+                    android:id="@+id/iv_lock_icon"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:contentDescription="@string/lock_icon_desc"
+                    android:src="@drawable/ic_lock_outline"
+                    app:tint="@color/lock_icon_tint" />
+
+                <TextView
+                    android:id="@+id/tv_locked_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/lock_title"
+                    android:textColor="@color/lock_text_primary"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_amount_due"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:fontFamily="sans-serif-black"
+                    android:textColor="@color/lock_amount"
+                    android:textSize="48sp"
+                    tools:text="TSh 4,500" />
+
+                <TextView
+                    android:id="@+id/tv_amount_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/lock_amount_label"
+                    android:textColor="@color/lock_text_secondary"
+                    android:textSize="13sp" />
+
+                <View
+                    android:layout_width="40dp"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="18dp"
+                    android:background="@color/lock_divider" />
+
+                <TextView
+                    android:id="@+id/tv_days_overdue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/lock_overdue"
+                    android:textSize="15sp"
+                    tools:text="7 days overdue" />
+
+                <TextView
+                    android:id="@+id/tv_lock_reason"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:textColor="@color/lock_text_secondary"
+                    android:textSize="13sp"
+                    tools:text="Payment not received" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ════════════ PAYMENT REFERENCE PANEL (PAYMENT mode only) ════════════
+             Hidden in TAMPER and PASSCODE modes.
+             Borrower pays to Lipa Na number, then submits the M-Pesa code they
+             received in their SMS confirmation.
+        -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_payment_ref"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="14dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/lock_card_bg"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            tools:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="20dp"
+                android:paddingTop="20dp"
+                android:paddingBottom="20dp">
+
+                <!-- Section title -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/lock_pay_section_title"
+                    android:textColor="@color/lock_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- Lipa Na number -->
+                <TextView
+                    android:id="@+id/tv_lipa_number"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:background="#1AFFFFFF"
+                    android:fontFamily="monospace"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
+                    android:text="@string/lock_pay_lipa_number"
+                    android:textColor="@color/lock_mpesa_green"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- Instructions -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/lock_pay_instructions"
+                    android:textColor="@color/lock_text_secondary"
+                    android:textSize="12sp" />
+
+                <!-- M-Pesa reference input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/til_mpesa_ref"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:hint="@string/lock_pay_hint_ref"
+                    app:boxStrokeColor="@color/lock_mpesa_green"
+                    app:hintTextColor="@color/lock_text_secondary">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_mpesa_ref"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:inputType="textCapCharacters|textNoSuggestions"
+                        android:maxLength="20"
+                        android:textColor="@color/lock_text_primary"
+                        android:textSize="16sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Optional amount input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/til_amount_paid"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/lock_pay_hint_amount"
+                    app:boxStrokeColor="@color/lock_mpesa_green"
+                    app:hintTextColor="@color/lock_text_secondary">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_amount_paid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:textColor="@color/lock_text_primary"
+                        android:textSize="16sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Status message (feedback after submit or check status) -->
+                <TextView
+                    android:id="@+id/tv_payment_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:textSize="13sp"
+                    android:visibility="gone"
+                    tools:text="✓ Submitted — awaiting admin review"
+                    tools:visibility="visible"
+                    tools:textColor="@color/lock_mpesa_green" />
+
+                <!-- Action row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_submit_ref"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/lock_pay_btn_submit"
+                        android:textSize="15sp"
+                        app:backgroundTint="@color/lock_mpesa_green"
+                        app:cornerRadius="12dp"
+                        app:icon="@drawable/ic_mpesa"
+                        app:iconGravity="textStart"
+                        app:iconPadding="6dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_check_status"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="52dp"
+                        android:layout_marginStart="10dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/lock_pay_check_status"
+                        android:textColor="@color/lock_text_secondary"
+                        android:textSize="13sp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="@color/lock_btn_support_border" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- ════════════ PIN KEYPAD (PASSCODE mode only) ════════════
+             Visibility = GONE by default.
+        -->
+        <LinearLayout
+            android:id="@+id/layout_pin_keypad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_pin_prompt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Enter your unlock PIN"
+                android:textColor="@color/lock_text_secondary"
+                android:textSize="14sp" />
+
+            <LinearLayout
+                android:id="@+id/layout_pin_dots"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <View android:id="@+id/pin_dot_1"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+                <View android:id="@+id/pin_dot_2"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+                <View android:id="@+id/pin_dot_3"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+                <View android:id="@+id/pin_dot_4"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+                <View android:id="@+id/pin_dot_5"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+                <View android:id="@+id/pin_dot_6"
+                    android:layout_width="14dp" android:layout_height="14dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@drawable/pin_dot_empty" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_pin_error"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="Incorrect PIN — try again"
+                android:textColor="#FF5252"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <GridLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:columnCount="3"
+                android:layout_marginTop="4dp"
+                android:rowCount="4">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_1" style="@style/Widget.Kopanow.PinKey"
+                    android:text="1" android:tag="1" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_2" style="@style/Widget.Kopanow.PinKey"
+                    android:text="2" android:tag="2" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_3" style="@style/Widget.Kopanow.PinKey"
+                    android:text="3" android:tag="3" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_4" style="@style/Widget.Kopanow.PinKey"
+                    android:text="4" android:tag="4" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_5" style="@style/Widget.Kopanow.PinKey"
+                    android:text="5" android:tag="5" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_6" style="@style/Widget.Kopanow.PinKey"
+                    android:text="6" android:tag="6" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_7" style="@style/Widget.Kopanow.PinKey"
+                    android:text="7" android:tag="7" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_8" style="@style/Widget.Kopanow.PinKey"
+                    android:text="8" android:tag="8" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_9" style="@style/Widget.Kopanow.PinKey"
+                    android:text="9" android:tag="9" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_blank"
+                    style="@style/Widget.Kopanow.PinKey"
+                    android:enabled="false"
+                    android:backgroundTint="@android:color/transparent"
+                    android:text="" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_0" style="@style/Widget.Kopanow.PinKey"
+                    android:text="0" android:tag="0" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pin_btn_backspace"
+                    style="@style/Widget.Kopanow.PinKey"
+                    android:text="⌫" />
+            </GridLayout>
+
+        </LinearLayout>
+
+        <!-- ════════════ CALL SUPPORT button (always visible) ════════════ -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_call_support"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="14dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/lock_btn_support"
+            android:textColor="@color/lock_text_secondary"
+            android:textSize="15sp"
+            app:cornerRadius="14dp"
+            app:icon="@drawable/ic_phone"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconTint="@color/lock_text_secondary"
+            app:strokeColor="@color/lock_btn_support_border" />
+
+        <!-- Emergency link -->
+        <TextView
+            android:id="@+id/tv_emergency"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/lock_emergency"
+            android:textColor="@color/lock_emergency_text"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

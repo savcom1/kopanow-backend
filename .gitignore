@@ -1,0 +1,35 @@
+# ── Android / Gradle ──────────────────────────────────────────
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+**/build/
+
+# ── Secrets & credentials (NEVER commit these) ────────────────
+kopanow-backend/.env
+kopanow-backend/.env.*
+google-services.json
+*.json
+!kopanow-backend/package.json
+!kopanow-backend/package-lock.json
+
+# ── Node / Backend ─────────────────────────────────────────────
+kopanow-backend/node_modules/
+kopanow-backend/npm-debug.log*
+kopanow-backend/*.log
+
+# ── Misc ───────────────────────────────────────────────────────
+Thumbs.db
+*.orig

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- ── Lock screen ── -->
+    <!-- Backgrounds -->
+    <color name="lock_bg">#0D0D0D</color>
+    <color name="lock_card_bg">#1A1A1A</color>
+
+    <!-- Brand wordmark -->
+    <color name="lock_brand">#8C8C8C</color>
+
+    <!-- Lock icon — alert red -->
+    <color name="lock_icon_tint">#FF4E4E</color>
+
+    <!-- Amount due — amber/gold -->
+    <color name="lock_amount">#FFD166</color>
+
+    <!-- Text hierarchy -->
+    <color name="lock_text_primary">#F5F5F5</color>
+    <color name="lock_text_secondary">#A0A0A0</color>
+
+    <!-- Days overdue — warm orange-red -->
+    <color name="lock_overdue">#FF6B35</color>
+
+    <!-- Divider -->
+    <color name="lock_divider">#2E2E2E</color>
+
+    <!-- M-Pesa green CTA -->
+    <color name="lock_mpesa_green">#00A651</color>
+    <color name="lock_btn_pay_text">#FFFFFF</color>
+
+    <!-- Support button border -->
+    <color name="lock_btn_support_border">#3A3A3A</color>
+
+    <!-- Emergency call link -->
+    <color name="lock_emergency_text">#606060</color>
+</resources>
