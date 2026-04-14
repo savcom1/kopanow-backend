@@ -137,7 +137,7 @@ const DeviceSchema = new mongoose.Schema(
 
     /**
      * Human-readable reason shown on LockScreenActivity
-     * (e.g. "7 days overdue — KES 4,500 due").
+     * (e.g. "7 days overdue — TSh 4,500 due").
      */
     lock_reason: {
       type:    String,
@@ -146,7 +146,7 @@ const DeviceSchema = new mongoose.Schema(
 
     /**
      * Outstanding amount, stored as a formatted string
-     * (e.g. "KES 4,500") for direct display on the lock screen.
+     * (e.g. "TSh 4,500") for direct display on the lock screen.
      */
     amount_due: {
       type:    String,

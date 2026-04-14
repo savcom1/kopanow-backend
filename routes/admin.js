@@ -261,7 +261,7 @@ router.post('/seed', async (req, res) => {
                 days_overdue:7, device_status:'locked' },
         device: { borrower_id:'borrower_001', loan_id:'loan_001', device_id:'androidid_abc123',
                   fcm_token:'fcm_test_001', device_model:'Samsung Galaxy A52', status:'locked',
-                  dpc_active:true, is_locked:true, lock_reason:'7 days overdue', amount_due:'KES 4,500',
+                  dpc_active:true, is_locked:true, lock_reason:'7 days overdue', amount_due:'TSh 4,500',
                   mpesa_phone:'254712345678', last_seen:new Date(now-2*3600000) }
       },
       {

@@ -57,12 +57,12 @@ const PaymentSchema = new mongoose.Schema(
     },
 
     /**
-     * Amount paid in this transaction (KES, whole number).
+     * Amount paid in this transaction (TSh, whole number).
      */
     amount: {
       type:     Number,
       required: [true, 'amount is required'],
-      min:      [1, 'payment amount must be at least 1 KES']
+      min:      [1, 'payment amount must be at least 1 TSh']
     },
 
     /**

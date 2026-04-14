@@ -38,7 +38,7 @@ async function runOverdueCheck() {
 
       if (!device?.fcm_token) continue;
 
-      const amountStr = `KES ${Number(loan.outstanding_amount).toLocaleString()}`;
+      const amountStr = `TSh ${Number(loan.outstanding_amount).toLocaleString()}`;
 
       if (daysLate >= 7 && !device.is_locked) {
         // Lock the device

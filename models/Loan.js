@@ -48,7 +48,7 @@ const LoanSchema = new mongoose.Schema(
 
     // ── Financial values ───────────────────────────────────────────────────
 
-    /** Original principal disbursed (KES, integer cents or whole shillings). */
+    /** Original principal disbursed (TSh, integer cents or whole shillings). */
     principal_amount: {
       type:     Number,
       required: true,
@@ -56,7 +56,7 @@ const LoanSchema = new mongoose.Schema(
     },
 
     /**
-     * Current outstanding balance (KES).
+     * Current outstanding balance (TSh).
      * Decremented by successful Payment records; used to decide lock/unlock.
      */
     outstanding_amount: {
@@ -65,7 +65,7 @@ const LoanSchema = new mongoose.Schema(
       min:      0
     },
 
-    /** Total interest charged over the loan term (KES). */
+    /** Total interest charged over the loan term (TSh). */
     interest_amount: {
       type:    Number,
       default: 0,

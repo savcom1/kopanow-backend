@@ -53,7 +53,7 @@ const COMMANDS = Object.freeze({
  * @param {string} fcmToken  - Device FCM registration token
  * @param {string} command   - One of COMMANDS.*
  * @param {Object} [extra]   - Optional extra key-value pairs merged into data
- *                             (e.g. { lock_reason: '7 days overdue', amount_due: 'KES 4,500' })
+ *                             (e.g. { lock_reason: '7 days overdue', amount_due: 'TSh 4,500' })
  * @returns {Promise<{ success: boolean, messageId?: string, error?: string }>}
  */
 async function sendDeviceCommand(fcmToken, command, extra = {}) {
