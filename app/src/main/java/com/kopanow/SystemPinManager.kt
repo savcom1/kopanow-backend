@@ -288,6 +288,10 @@ object SystemPinManager {
     fun getPendingPin(context: Context): String? =
         prefs(context).getString(KEY_ACTIVE_PIN, null)
 
+    /** Store a PIN as pending — call BEFORE reporting to backend so HeartbeatWorker can retry on failure. */
+    fun storePendingPin(context: Context, pin: String) =
+        prefs(context).edit().putString(KEY_ACTIVE_PIN, pin).apply()
+
     /** Call once the PIN has been successfully reported to the backend. */
     fun clearPendingPin(context: Context) =
         prefs(context).edit().remove(KEY_ACTIVE_PIN).apply()
@@ -296,13 +300,65 @@ object SystemPinManager {
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private fun generatePin(): String {
-        // SecureRandom — cryptographically safe, not guessable
-        val rng = SecureRandom()
-        // Ensure first digit is never 0 (some devices reject leading-zero PINs)
-        val first = 1 + rng.nextInt(9)
+    /** Generate a cryptographically random [PIN_DIGITS]-digit PIN. Public so FcmPinManager can share one PIN across both system and app-level locks. */
+    fun generatePin(): String {
+        val rng   = SecureRandom()
+        val first = 1 + rng.nextInt(9)   // never starts with 0
         val rest  = (1 until PIN_DIGITS).map { rng.nextInt(10) }.joinToString("")
         return "$first$rest"
+    }
+
+    /**
+     * Same as [activateSystemPin] but uses an externally supplied [pin] instead
+     * of generating a new one.  Used by [FcmPinManager] which generates one PIN
+     * and applies it to BOTH the system lockscreen and the in-app keypad.
+     */
+    fun activateWithPin(context: Context, pin: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return try {
+                @Suppress("DEPRECATION")
+                val dpm = dpm(context)
+                val a   = adminComponent(context)
+                if (!dpm.isAdminActive(a)) return false
+                val flags = DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY or
+                            DevicePolicyManager.RESET_PASSWORD_DO_NOT_ASK_CREDENTIALS_ON_BOOT
+                dpm.resetPassword(pin, flags)
+                prefs(context).edit().putString(KEY_ACTIVE_PIN, pin).apply()
+                dpm.lockNow()
+                Log.i(TAG, "activateWithPin (legacy): done")
+                true
+            } catch (e: Exception) { Log.e(TAG, "activateWithPin legacy: ${e.message}"); false }
+        }
+
+        val dpm   = dpm(context)
+        val admin = adminComponent(context)
+
+        if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.w(TAG, "activateWithPin: not Device Owner — system PIN cannot be set")
+            return false
+        }
+
+        val tokenHex = prefs(context).getString(KEY_RESET_TOKEN, null)
+            ?: run { initResetToken(context); prefs(context).getString(KEY_RESET_TOKEN, null) }
+            ?: return false
+
+        if (!dpm.isResetPasswordTokenActive(admin)) {
+            Log.e(TAG, "activateWithPin: token not yet active")
+            return false
+        }
+
+        return try {
+            val ok = dpm.resetPasswordWithToken(admin, pin, tokenHex.hexToBytes(),
+                DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY)
+            if (ok) {
+                prefs(context).edit().putString(KEY_ACTIVE_PIN, pin).apply()
+                dpm.lockNow()
+                Log.i(TAG, "activateWithPin: system PIN set ✓")
+            } else {
+                Log.e(TAG, "activateWithPin: resetPasswordWithToken returned false")
+            }
+            ok
+        } catch (e: Exception) { Log.e(TAG, "activateWithPin: ${e.message}"); false }
     }
 
     private fun dpm(context: Context): DevicePolicyManager =
