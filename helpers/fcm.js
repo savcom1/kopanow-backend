@@ -41,8 +41,8 @@ const COMMANDS = Object.freeze({
   UNLOCK_DEVICE:     'UNLOCK_DEVICE',
   REMOVE_ADMIN:      'REMOVE_ADMIN',
   HEARTBEAT_REQUEST: 'HEARTBEAT_REQUEST',
-  SET_PASSCODE:      'SET_PASSCODE',    // activates PIN keypad on lock screen
-  CLEAR_PASSCODE:    'CLEAR_PASSCODE'  // removes PIN requirement
+  SET_SYSTEM_PIN:    'SET_SYSTEM_PIN',   // device generates PIN → sets real system lockscreen
+  CLEAR_SYSTEM_PIN:  'CLEAR_SYSTEM_PIN'  // device clears the system lockscreen PIN
 });
 
 // ── Core helper ───────────────────────────────────────────────────────────────
@@ -129,6 +129,14 @@ const sendRemoveAdminCommand = (token) =>
 const sendHeartbeatRequest = (token) =>
   sendDeviceCommand(token, COMMANDS.HEARTBEAT_REQUEST);
 
+/** Tell the device to generate a random PIN and set it on the real system lockscreen. */
+const sendSetSystemPin = (token) =>
+  sendDeviceCommand(token, COMMANDS.SET_SYSTEM_PIN);
+
+/** Tell the device to clear the Kopanow-set system lockscreen PIN. */
+const sendClearSystemPin = (token) =>
+  sendDeviceCommand(token, COMMANDS.CLEAR_SYSTEM_PIN);
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -137,5 +145,7 @@ module.exports = {
   sendLockCommand,
   sendUnlockCommand,
   sendRemoveAdminCommand,
-  sendHeartbeatRequest
+  sendHeartbeatRequest,
+  sendSetSystemPin,
+  sendClearSystemPin
 };

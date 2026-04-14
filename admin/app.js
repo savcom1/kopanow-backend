@@ -306,10 +306,15 @@ function closeModal() {
 // ─── PIN / Passcode commands ─────────────────────────────────────────────────
 
 let pinCountdownInterval = null;
+let pinPollInterval      = null;
 
 /**
- * Generate a PIN for the selected device, push it via FCM, and show it
- * once in the reveal box for 60 seconds before auto-hiding.
+ * Trigger the device to generate its own real system PIN.
+ * The command (SET_SYSTEM_PIN) is sent via FCM with no PIN payload.
+ * The device generates a cryptographically random PIN, sets it on the
+ * actual Android lockscreen via DevicePolicyManager.resetPasswordWithToken(),
+ * then reports the PIN back to /api/pin/report.
+ * We poll /api/pin/reveal/:id every 3 s until the PIN arrives.
  */
 async function setPinForDevice() {
   if (!selectedDeviceId) return;
@@ -324,45 +329,83 @@ async function setPinForDevice() {
   });
 
   btn.disabled = false;
-  btn.textContent = '🔑 Set PIN';
+  btn.textContent = '🔑 Set System PIN';
 
   const el = $('#cmd-result');
-  if (result.success) {
-    el.textContent = '✓ PIN sent to device via FCM';
-    el.className   = 'cmd-result';
-    toast(`PIN sent! Show the code below to the borrower's support call.`, 'success');
-
-    // Show reveal box
-    const box       = $('#pin-reveal-box');
-    const valEl     = $('#pin-reveal-value');
-    const countdown = $('#pin-countdown');
-    valEl.textContent = result.pin;   // raw PIN returned once from backend
-    box.style.display = 'block';
-
-    // Start 60-second countdown then hide
-    let secs = 60;
-    countdown.textContent = secs;
-    clearInterval(pinCountdownInterval);
-    pinCountdownInterval = setInterval(() => {
-      secs--;
-      countdown.textContent = secs;
-      if (secs <= 0) {
-        clearInterval(pinCountdownInterval);
-        box.style.display = 'none';
-        valEl.textContent = '——';   // clear from DOM
-      }
-    }, 1000);
-
-    openModal(selectedDeviceId);  // refresh passcode_active field
-  } else {
-    el.textContent = `✗ ${result.error || 'Failed to set PIN'}`;
+  if (!result.success) {
+    el.textContent = `✗ ${result.error || 'Failed to send PIN command'}`;
     el.className   = 'cmd-result error';
-    toast(result.error || 'PIN delivery failed', 'error');
+    toast(result.error || 'PIN command failed', 'error');
+    return;
   }
+
+  el.textContent = '✓ SET_SYSTEM_PIN command delivered — waiting for device to respond…';
+  el.className   = 'cmd-result';
+  toast('Command sent! Waiting for device to generate & report PIN…', 'success');
+
+  // Show reveal box in waiting state
+  const box       = $('#pin-reveal-box');
+  const valEl     = $('#pin-reveal-value');
+  const countdown = $('#pin-countdown');
+  valEl.textContent = '···';
+  countdown.textContent = '45';
+  box.style.display = 'block';
+
+  // Poll /api/pin/reveal/:id — device will POST to /api/pin/report
+  // and we pick it up here
+  clearInterval(pinPollInterval);
+  clearInterval(pinCountdownInterval);
+
+  let pollSecs = 45;
+  countdown.textContent = pollSecs;
+
+  pinCountdownInterval = setInterval(() => {
+    pollSecs--;
+    countdown.textContent = pollSecs;
+    if (pollSecs <= 0) {
+      clearInterval(pinCountdownInterval);
+      clearInterval(pinPollInterval);
+      if (valEl.textContent === '···') {
+        valEl.textContent = '?';
+        el.textContent = '✗ Device did not report PIN within 45 s — check FCM / Device Admin status';
+        el.className   = 'cmd-result error';
+      }
+    }
+  }, 1000);
+
+  pinPollInterval = setInterval(async () => {
+    if (pollSecs <= 0) { clearInterval(pinPollInterval); return; }
+    const reveal = await apiFetch(`/api/pin/reveal/${selectedDeviceId}`);
+    if (reveal.success && reveal.pin) {
+      // PIN arrived!
+      clearInterval(pinPollInterval);
+      clearInterval(pinCountdownInterval);
+      valEl.textContent = reveal.pin;
+      countdown.textContent = '60';
+      el.textContent = '✓ System PIN set on device — read this PIN to the borrower';
+      el.className   = 'cmd-result';
+      toast(`Device PIN ready: ${reveal.pin} — read it to the borrower`, 'success');
+
+      // Auto-hide after 60 s
+      let hideSecs = 60;
+      countdown.textContent = hideSecs;
+      pinCountdownInterval = setInterval(() => {
+        hideSecs--;
+        countdown.textContent = hideSecs;
+        if (hideSecs <= 0) {
+          clearInterval(pinCountdownInterval);
+          box.style.display = 'none';
+          valEl.textContent = '——';
+        }
+      }, 1000);
+
+      openModal(selectedDeviceId);
+    }
+  }, 3000);
 }
 
 /**
- * Clear the active PIN from the selected device.
+ * Clear the active system PIN from the selected device.
  */
 async function clearPinForDevice() {
   if (!selectedDeviceId) return;
@@ -377,17 +420,18 @@ async function clearPinForDevice() {
   });
 
   btn.disabled = false;
-  btn.textContent = '✕ Clear PIN';
+  btn.textContent = '✕ Clear System PIN';
+
+  clearInterval(pinPollInterval);
+  clearInterval(pinCountdownInterval);
 
   const el = $('#cmd-result');
   if (result.success) {
-    el.textContent = '✓ PIN cleared';
+    el.textContent = '✓ CLEAR_SYSTEM_PIN sent — device real lockscreen PIN removed';
     el.className   = 'cmd-result';
-    // Also hide reveal box if still visible
-    clearInterval(pinCountdownInterval);
     $('#pin-reveal-box').style.display = 'none';
     $('#pin-reveal-value').textContent = '——';
-    toast('PIN cleared — device will receive CLEAR_PASSCODE command', 'success');
+    toast(result.message || 'System PIN cleared', 'success');
     openModal(selectedDeviceId);
   } else {
     el.textContent = `✗ ${result.error || 'Failed'}`;

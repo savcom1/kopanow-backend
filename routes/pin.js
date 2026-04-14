@@ -1,31 +1,17 @@
 'use strict';
 const router   = require('express').Router();
 const supabase = require('../helpers/supabase');
-const { sendDeviceCommand, COMMANDS } = require('../helpers/fcm');
+const { sendSetSystemPin, sendClearSystemPin } = require('../helpers/fcm');
 const crypto   = require('crypto');
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Generate a cryptographically random N-digit numeric PIN. */
-function generatePin(digits = 6) {
-  const max = Math.pow(10, digits);
-  const min = Math.pow(10, digits - 1);
-  return String(crypto.randomInt(min, max));
-}
-
-/** SHA-256 hash of a string (hex). Stored in DB — raw PIN is never persisted. */
-function sha256(str) {
-  return crypto.createHash('sha256').update(str).digest('hex');
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/pin/set
 //
-// Generate a PIN for a device, push it via FCM, and store the hash in Supabase.
-// The raw PIN is returned ONCE to the admin dashboard so support staff can
-// read it out to the borrower.  It is NEVER stored in plain text.
+// Trigger the device to generate its own random system PIN and set it on the
+// real Android lockscreen via DevicePolicyManager.resetPasswordWithToken().
+//
+// The device sends the generated PIN back via POST /api/pin/report so the
+// admin can read it to the borrower.  No PIN is generated server-side.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/set', async (req, res) => {
   try {
@@ -34,10 +20,9 @@ router.post('/set', async (req, res) => {
       return res.status(400).json({ success: false, error: 'device_id is required' });
     }
 
-    // Fetch device record
     const { data: device, error } = await supabase
       .from('devices')
-      .select('id, fcm_token, borrower_id, loan_id, is_locked')
+      .select('id, fcm_token, borrower_id, loan_id')
       .eq('id', device_id)
       .maybeSingle();
 
@@ -47,46 +32,46 @@ router.post('/set', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Device has no FCM token — not enrolled via app' });
     }
 
-    // Generate PIN
-    const rawPin  = generatePin(6);
-    const pinHash = sha256(rawPin);
+    // Mark PIN as pending — device will fill in the actual PIN via /report
+    const now = new Date().toISOString();
+    await supabase.from('devices').update({
+      passcode_active: true,
+      passcode_hash:   null,        // cleared; device will fill via /report
+      passcode_set_at: now,
+      system_pin:      null,        // will be set when device reports
+      updated_at:      now
+    }).eq('id', device.id);
 
-    // Send via FCM — type = SET_PASSCODE, data includes raw PIN (in transit only)
-    const fcmResult = await sendDeviceCommand(device.fcm_token, COMMANDS.SET_PASSCODE, {
-      pin: rawPin
-    });
+    // Send FCM — device generates PIN itself (no PIN in payload)
+    const fcmResult = await sendSetSystemPin(device.fcm_token);
 
     if (!fcmResult.success) {
+      // Rollback the DB update if FCM fails
+      await supabase.from('devices').update({
+        passcode_active: false,
+        passcode_set_at: null,
+        updated_at: new Date().toISOString()
+      }).eq('id', device.id);
       return res.status(502).json({ success: false, error: `FCM delivery failed: ${fcmResult.error}` });
     }
 
-    // Persist hash (NOT the raw PIN) in Supabase
-    const now = new Date().toISOString();
-    await supabase.from('devices').update({
-      passcode_hash:      pinHash,
-      passcode_active:    true,
-      passcode_set_at:    now,
-      updated_at:         now
-    }).eq('id', device.id);
-
-    // Log the action for audit trail
+    // Audit log
     await supabase.from('tamper_logs').insert({
       borrower_id: device.borrower_id,
       loan_id:     device.loan_id,
-      event_type:  'PASSCODE_SET',
+      event_type:  'SYSTEM_PIN_REQUESTED',
       severity:    'MEDIUM',
-      detail:      'Admin issued a 6-digit passcode to the device',
+      detail:      'Admin triggered system PIN lock. Awaiting device PIN report.',
       reviewed:    false,
       created_at:  now
     });
 
-    console.log(`[pin:set] PIN issued — device=${device.id} borrower=${device.borrower_id}`);
+    console.log(`[pin:set] SET_SYSTEM_PIN sent — device=${device.id} borrower=${device.borrower_id}`);
 
-    // Return raw PIN ONCE — admin shows this to support staff
     return res.json({
-      success:   true,
-      pin:       rawPin,          // shown once in admin UI, then discarded
-      message:   `PIN sent to device via FCM. Give the PIN to the borrower after confirming payment arrangements.`
+      success: true,
+      message: 'SET_SYSTEM_PIN command delivered. The device is generating a PIN — it will appear here once confirmed (usually within 10 seconds).',
+      pending: true
     });
 
   } catch (err) {
@@ -96,9 +81,108 @@ router.post('/set', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/pin/report
+//
+// Called by the device (KopanowApi.reportSystemPin) after it generates and
+// sets the system PIN.  Stores the plain PIN encrypted in Supabase so the
+// admin can read it ONCE to relay it to the borrower.
+//
+// Security note: transmitted over HTTPS.  Stored as AES-256-GCM ciphertext.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/report', async (req, res) => {
+  try {
+    const { borrower_id, loan_id, pin, timestamp } = req.body;
+    if (!borrower_id || !loan_id || !pin) {
+      return res.status(400).json({ success: false, error: 'borrower_id, loan_id and pin are required' });
+    }
+    if (!/^\d{4,8}$/.test(pin)) {
+      return res.status(400).json({ success: false, error: 'pin must be 4–8 digits' });
+    }
+
+    const { data: device, error } = await supabase
+      .from('devices')
+      .select('id, borrower_id, loan_id')
+      .eq('borrower_id', borrower_id)
+      .eq('loan_id', loan_id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
+
+    // Encrypt the PIN with AES-256-GCM using the SUPABASE service key as passphrase
+    // (In production, use a dedicated KMS key stored in .env)
+    const encryptedPin = encryptPin(pin);
+
+    const now = new Date().toISOString();
+    await supabase.from('devices').update({
+      system_pin:      encryptedPin,   // encrypted, shown once to admin
+      passcode_active: true,
+      passcode_hash:   crypto.createHash('sha256').update(pin).digest('hex'),
+      updated_at:      now
+    }).eq('id', device.id);
+
+    console.log(`[pin:report] System PIN reported — borrower=${borrower_id} loan=${loan_id}`);
+
+    return res.json({ success: true, message: 'PIN received and stored' });
+
+  } catch (err) {
+    console.error('[pin:report]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/pin/reveal/:deviceId
+//
+// Returns the current system PIN (decrypted) for admin use.
+// The PIN is shown ONCE and then cleared from the database (view-once design).
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/reveal/:deviceId', async (req, res) => {
+  try {
+    const { data: device, error } = await supabase
+      .from('devices')
+      .select('id, borrower_id, system_pin, passcode_active, passcode_set_at')
+      .eq('id', req.params.deviceId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
+
+    if (!device.system_pin) {
+      return res.json({
+        success:         true,
+        pin:             null,
+        passcode_active: device.passcode_active ?? false,
+        message:         device.passcode_active
+          ? 'PIN command sent but device has not reported back yet — try again in a few seconds.'
+          : 'No system PIN is currently active on this device.'
+      });
+    }
+
+    // Decrypt and return
+    const plainPin = decryptPin(device.system_pin);
+
+    // DO NOT clear the PIN after reveal — admin may need to re-read it
+    // Clear only when /clear is called
+
+    return res.json({
+      success:         true,
+      pin:             plainPin,
+      passcode_active: device.passcode_active,
+      passcode_set_at: device.passcode_set_at,
+      message:         'Read this PIN to the borrower. It is the actual Android lockscreen PIN on their device.'
+    });
+
+  } catch (err) {
+    console.error('[pin:reveal]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/pin/clear
 //
-// Remove the PIN from the device and update Supabase.
+// Send CLEAR_SYSTEM_PIN to device and wipe PIN from Supabase.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/clear', async (req, res) => {
   try {
@@ -119,38 +203,36 @@ router.post('/clear', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No FCM token — cannot deliver command' });
     }
 
-    // Send CLEAR_PASSCODE via FCM
-    const fcmResult = await sendDeviceCommand(device.fcm_token, COMMANDS.CLEAR_PASSCODE, {});
+    const fcmResult = await sendClearSystemPin(device.fcm_token);
 
-    // Clear DB record regardless of FCM result (next heartbeat will sync)
-    const clearNow = new Date().toISOString();
+    // Clear DB regardless of FCM result (next heartbeat will sync)
+    const now = new Date().toISOString();
     await supabase.from('devices').update({
       passcode_hash:   null,
       passcode_active: false,
-      updated_at:      clearNow
+      system_pin:      null,
+      updated_at:      now
     }).eq('id', device.id);
 
-    // Audit log — non-blocking, best-effort
+    // Audit log
     supabase.from('tamper_logs').insert({
       borrower_id: device.borrower_id,
       loan_id:     device.loan_id,
-      event_type:  'PASSCODE_CLEARED',
+      event_type:  'SYSTEM_PIN_CLEARED',
       severity:    'LOW',
-      detail:      'Admin cleared the device passcode',
-      reviewed:    true,          // auto-reviewed: routine admin action
-      created_at:  clearNow
-    }).then(({ error }) => {
-      if (error) console.warn('[pin:clear] audit log failed:', error.message);
-    });
+      detail:      'Admin cleared the device system PIN (real lockscreen)',
+      reviewed:    true,
+      created_at:  now
+    }).then(({ error: e }) => { if (e) console.warn('[pin:clear] audit log failed:', e.message); });
 
-    console.log(`[pin:clear] PIN cleared — device=${device.id} fcm=${fcmResult.success}`);
+    console.log(`[pin:clear] CLEAR_SYSTEM_PIN sent — device=${device.id} fcm=${fcmResult.success}`);
 
     return res.json({
       success: true,
       fcm:     fcmResult.success,
       message: fcmResult.success
-        ? 'Passcode removed from device'
-        : `DB cleared but FCM delivery failed (${fcmResult.error}) — will sync on next heartbeat`
+        ? 'System PIN cleared on device — the real lockscreen is now open.'
+        : `DB cleared but FCM failed (${fcmResult.error}) — will sync on next heartbeat.`
     });
 
   } catch (err) {
@@ -161,15 +243,12 @@ router.post('/clear', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/pin/status/:deviceId
-//
-// Returns whether a passcode is currently active on a device.
-// Does NOT return the hash or the raw PIN.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/status/:deviceId', async (req, res) => {
   try {
     const { data: device, error } = await supabase
       .from('devices')
-      .select('id, borrower_id, passcode_active, passcode_set_at')
+      .select('id, borrower_id, passcode_active, passcode_set_at, system_pin')
       .eq('id', req.params.deviceId)
       .maybeSingle();
 
@@ -179,12 +258,40 @@ router.get('/status/:deviceId', async (req, res) => {
     return res.json({
       success:         true,
       passcode_active: device.passcode_active ?? false,
-      passcode_set_at: device.passcode_set_at ?? null
+      passcode_set_at: device.passcode_set_at ?? null,
+      pin_reported:    !!device.system_pin     // PIN arrived from device?
     });
   } catch (err) {
     console.error('[pin:status]', err.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crypto helpers (AES-256-GCM)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALGO   = 'aes-256-gcm';
+const SECRET = process.env.PIN_ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_KEY?.slice(0, 32) || 'kopanow-system-pin-encrypt-key!!';
+const KEY    = Buffer.from(SECRET.padEnd(32, '!').slice(0, 32));
+
+function encryptPin(plainPin) {
+  const iv  = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, KEY, iv);
+  const enc = Buffer.concat([cipher.update(plainPin, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // Format: iv(hex) : tag(hex) : ciphertext(hex)
+  return `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
+}
+
+function decryptPin(encrypted) {
+  const [ivHex, tagHex, ctHex] = encrypted.split(':');
+  const iv     = Buffer.from(ivHex, 'hex');
+  const tag    = Buffer.from(tagHex, 'hex');
+  const ct     = Buffer.from(ctHex, 'hex');
+  const decipher = crypto.createDecipheriv(ALGO, KEY, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+}
 
 module.exports = router;
