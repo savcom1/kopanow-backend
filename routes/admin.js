@@ -29,7 +29,7 @@ router.get('/devices', async (req, res) => {
     const from = (parseInt(page) - 1) * parseInt(limit);
     const to   = from + parseInt(limit) - 1;
     const { data: devices, error, count } = await query
-      .order('last_seen', { ascending: false, nullsFirst: false })
+      .order('updated_at', { ascending: false })
       .range(from, to);
 
     if (error) throw error;
@@ -157,7 +157,7 @@ router.post('/command', async (req, res) => {
     if (!device.fcm_token) return res.status(400).json({ success: false, error: 'Device has no FCM token' });
 
     const { data: loan } = await supabase.from('loans').select('outstanding_amount').eq('loan_id', device.loan_id).maybeSingle();
-    const amountStr = amount_due || (loan ? `KES ${Number(loan.outstanding_amount).toLocaleString()}` : '');
+    const amountStr = amount_due || (loan ? `TSh ${Number(loan.outstanding_amount).toLocaleString()}` : '');
     const reason    = lock_reason || device.lock_reason || 'Admin action';
 
     let fcmResult, logType, deviceUpdate = {}, loanUpdate = {};

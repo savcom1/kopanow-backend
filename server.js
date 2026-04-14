@@ -133,9 +133,10 @@ async function startServer() {
     console.log(`[server] Listening on port ${PORT}`);
     console.log(`[server] Admin UI  → http://localhost:${PORT}/admin`);
     console.log(`[server] Health    → http://localhost:${PORT}/health`);
-    console.log(`[server] Device API: /api/device/{register,heartbeat,tamper,status,fcm-token}`);
-    console.log(`[server] M-Pesa API: /api/mpesa/{stk-push,callback}`);
-    console.log(`[server] Admin API:  /api/admin/{devices,loans,tamper-logs,command}`);
+    console.log(`[server] Device API:  /api/device/{register,heartbeat,tamper,status,fcm-token}`);
+    console.log(`[server] Payment API: /api/payment/{submit,status,verify/:id,reject/:id,pending}`);
+    console.log(`[server] Admin API:   /api/admin/{devices,loans,tamper-logs,command}`);
+    console.log(`[server] PIN API:     /api/pin/{set,clear,verify}`);
     startPaymentScheduler();
   });
 }

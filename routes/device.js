@@ -46,18 +46,20 @@ router.post('/register', async (req, res) => {
     };
 
     // Upsert device — onConflict resolves by borrower_id + loan_id
+    const now = new Date().toISOString();
     const { data: device, error: devErr } = await supabase
       .from('devices')
       .upsert({
         borrower_id,
         loan_id,
-        device_id: device_id || null,
-        fcm_token: fcm_token || null,
+        device_id:    device_id    || null,
+        fcm_token:    fcm_token    || null,
         device_model: device_model || null,
-        mpesa_phone: mpesa_phone || null,
+        mpesa_phone:  mpesa_phone  || null,
         device_info,
-        status: 'registered',
-        updated_at: new Date().toISOString()
+        status:       'registered',
+        last_seen:    now,          // ← ensures new device appears at top of admin panel
+        updated_at:   now
       }, { onConflict: 'borrower_id,loan_id' })
       .select()
       .single();
