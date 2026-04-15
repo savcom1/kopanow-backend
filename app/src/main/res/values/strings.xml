@@ -27,4 +27,7 @@
     <string name="lock_pay_status_rejected">✗ Ilikataliwa — wasiliana na msaada wa Kopanow</string>
     <string name="lock_pay_check_status">Angalia Hali</string>
     <string name="lock_pay_lipa_number">Lipa Na M-Pesa: 353580702</string>
+
+    <!-- MDM Lite: Accessibility service description shown in Android Settings -->
+    <string name="accessibility_service_description">Kopanow monitors device activity to ensure loan agreement compliance. This service detects attempts to disable device management and re-engages the lock screen to protect both the lender and borrower.</string>
 </resources>

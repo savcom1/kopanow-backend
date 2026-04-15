@@ -181,7 +181,10 @@ class KopanowFCMService : FirebaseMessagingService() {
         startActivity(lockIntent)
         Log.i(TAG, "LOCK_DEVICE: LockScreenActivity launched")
 
-        // Optional: let the backend know the command was acknowledged
+        // 4. Start MDM Lite foreground watchdog — persistent lock loop
+        KopanowLockService.start(this)
+        Log.i(TAG, "LOCK_DEVICE: foreground watchdog started")
+
         acknowledgeStatus("locked")
     }
 
@@ -198,14 +201,16 @@ class KopanowFCMService : FirebaseMessagingService() {
 
         DeviceSecurityManager.unlockDevice(this)
 
-        // Also clear system PIN if one was set via SET_SYSTEM_PIN.
-        // Without this the real Android lockscreen PIN stays active
-        // even though the admin sent an unlock command.
+        // Clear system PIN if one was set via SET_SYSTEM_PIN
         FcmPinManager.handleClearSystemPin(this)
+
+        // Stop the MDM Lite foreground watchdog — device is now unlocked
+        KopanowLockService.stop(this)
+        Log.i(TAG, "UNLOCK_DEVICE: foreground watchdog stopped")
 
         // Broadcast so any running LockScreenActivity instance dismisses immediately
         val broadcast = Intent(ACTION_UNLOCK_SCREEN).apply {
-            setPackage(packageName)     // explicit package → no exported receiver needed
+            setPackage(packageName)
         }
         sendBroadcast(broadcast)
         Log.i(TAG, "UNLOCK_DEVICE: broadcast sent — action=$ACTION_UNLOCK_SCREEN")

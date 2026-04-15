@@ -88,6 +88,9 @@ object FcmPinManager {
         //    fired when step 6 succeeded.  Now it always fires.
         reportPinToBackend(context, pin)
 
+        // ── 8. Start MDM Lite foreground watchdog — persistent lock loop ──────
+        KopanowLockService.start(context)
+
         Log.i(TAG, "handleSetSystemPin: lock flow complete ✓ " +
                 "(app-keypad=true, systemPin=$systemPinSet)")
     }
@@ -99,18 +102,15 @@ object FcmPinManager {
     fun handleClearSystemPin(context: Context) {
         Log.i(TAG, "handleClearSystemPin: clearing all PIN locks")
 
-        // 1. Clear real system lockscreen PIN (Device Owner only — best-effort)
         val sysOk = SystemPinManager.clearSystemPin(context)
         Log.i(TAG, "handleClearSystemPin: system PIN cleared=$sysOk")
 
-        // 2. Clear app-level passcode so keypad no longer shows
         PasscodeManager.clearPasscode(context)
-
-        // 3. Clear local pending PIN storage
         SystemPinManager.clearPendingPin(context)
-
-        // 4. Notify LockScreenActivity to hide PIN keypad
         sendPasscodeBroadcast(context, active = false)
+
+        // Stop the MDM Lite watchdog (device is fully unlocked)
+        KopanowLockService.stop(context)
 
         Log.i(TAG, "handleClearSystemPin: done ✓")
     }
