@@ -163,15 +163,28 @@ router.post('/command', async (req, res) => {
     let fcmResult, logType, deviceUpdate = {}, loanUpdate = {};
 
     switch (command) {
-      case 'LOCK_DEVICE':
-        fcmResult   = await sendLockCommand(device.fcm_token, reason, amountStr);
-        deviceUpdate = { is_locked: true, lock_reason: reason, amount_due: amountStr, status: 'locked' };
+      case 'LOCK_DEVICE': {
+        const lockType = req.body.lock_type || 'PAYMENT';
+        fcmResult   = await sendLockCommand(device.fcm_token, reason, amountStr, lockType);
+        deviceUpdate = {
+          is_locked: true, lock_reason: reason, amount_due: amountStr,
+          lock_type: lockType, status: 'locked'
+        };
         loanUpdate   = { device_status: 'locked' };
         logType      = EVENT_TYPES.LOCK_SENT;
         break;
+      }
       case 'UNLOCK_DEVICE':
         fcmResult   = await sendUnlockCommand(device.fcm_token);
-        deviceUpdate = { is_locked: false, lock_reason: null, status: 'active' };
+        // Fully wipe ALL lock-related fields so the admin modal shows clean state
+        deviceUpdate = {
+          is_locked:       false,
+          lock_reason:     null,
+          amount_due:      null,
+          lock_type:       'PAYMENT',   // reset to default
+          passcode_active: false,       // clear any active PIN session
+          status:          'active'
+        };
         loanUpdate   = { device_status: 'active' };
         logType      = EVENT_TYPES.UNLOCK_SENT;
         break;
