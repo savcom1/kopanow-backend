@@ -391,10 +391,25 @@ class LockScreenActivity : AppCompatActivity() {
     private fun validatePin() {
         val entered = pinBuffer.toString()
         if (PasscodeManager.validatePasscode(entered)) {
-            // Correct PIN — clear passcode state and also clear the system PIN
+            // ── TAMPER LOCK: correct PIN but admin-only release ─────────────────────────────────
+            // Even with a correct PIN the device stays locked in tamper mode.
+            // Only the admin FCM UNLOCK_DEVICE command can clear a tamper lock.
+            if (KopanowPrefs.isTamperLock) {
+                resetPinState()
+                Toast.makeText(
+                    this,
+                    "⛔ Security alert active. Contact Kopanow to unlock.",
+                    Toast.LENGTH_LONG
+                ).show()
+                // Ensure watchdog is running
+                KopanowLockService.start(this)
+                return
+            }
+
+            // Correct PIN (non-tamper) — clear passcode state
             KopanowPrefs.isPasscodeLocked = false
             KopanowPrefs.passcodeHash     = null
-            SystemPinManager.clearSystemPin(this)     // clear the real system lockscreen PIN too
+            SystemPinManager.clearSystemPin(this)
             if (!KopanowPrefs.isLocked) {
                 safelyDismiss()
             } else {
@@ -412,8 +427,9 @@ class LockScreenActivity : AppCompatActivity() {
             showPinError()
             resetPinState()
             if (pinAttempts >= MAX_PIN_ATTEMPTS) {
-                // Too many wrong attempts — escalate to tamper
+                // Too many wrong attempts — escalate to tamper (admin-only release)
                 KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_TAMPER
+                KopanowLockService.start(this)   // ensure watchdog is running
                 activityScope.launch {
                     val bId = KopanowPrefs.borrowerId ?: return@launch
                     val lId = KopanowPrefs.loanId     ?: return@launch
@@ -421,10 +437,11 @@ class LockScreenActivity : AppCompatActivity() {
                 }
                 Toast.makeText(
                     this,
-                    "Majaribio mengi mabaya. Kopanow amearifiwa.",
+                    "Majaribio mengi mabaya. Kopanow amearifiwa. Piga simu msaada.",
                     Toast.LENGTH_LONG
                 ).show()
                 pinAttempts = 0
+                setupLockCard()   // re-render to show tamper UI
             }
         }
     }
@@ -533,15 +550,17 @@ class LockScreenActivity : AppCompatActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun safelyDismiss() {
-        Log.i(TAG, "safelyDismiss")
+        Log.i(TAG, "safelyDismiss — admin confirmed unlock")
         pollHandler.removeCallbacks(pollRunnable)
         KopanowPrefs.isLocked         = false
         KopanowPrefs.lockReason       = null
         KopanowPrefs.amountDue        = null
-        KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT
+        KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT  // reset to default
         KopanowPrefs.isPasscodeLocked = false
         KopanowPrefs.passcodeHash     = null
         DeviceSecurityManager.unlockDevice(this)
+        // Stop persistent foreground watchdog — device is fully unlocked
+        KopanowLockService.stop(this)
         try { stopLockTask() } catch (_: Exception) {}
         finish()
     }
