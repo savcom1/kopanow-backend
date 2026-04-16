@@ -536,7 +536,14 @@ class LockScreenActivity : AppCompatActivity() {
                 )
                 val res = KopanowApi.heartbeat(req)
                 if (res.success && res.data?.locked == false) {
-                    Log.i(TAG, "Backend confirms unlocked")
+                    Log.i(TAG, "checkLockStateFromBackend: backend confirms UNLOCKED — clearing all local lock state")
+                    // Clear passcode + tamper flags so safelyDismiss() sees a clean slate.
+                    // FCM handler normally does this, but the poll path must also cover the
+                    // offline-FCM-delayed case.
+                    KopanowPrefs.isPasscodeLocked = false
+                    KopanowPrefs.passcodeHash     = null
+                    KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT
+                    KopanowLockService.stop(this@LockScreenActivity)
                     withContext(Dispatchers.Main) { safelyDismiss() }
                 }
             } catch (e: Exception) {

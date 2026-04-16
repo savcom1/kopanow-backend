@@ -167,11 +167,14 @@ object DeviceSecurityManager {
                 Log.e(TAG, "unlockDevice: admin not active")
                 return false
             }
-            // Store unlocked state — LockCheckWorker will stop showing LockScreenActivity
-            KopanowPrefs.isLocked = false
-            KopanowPrefs.lockReason = null
-            KopanowPrefs.amountDue = null
-            Log.i(TAG, "unlockDevice: lock state cleared")
+            // Clear ALL lock-related state so no stale flags remain
+            KopanowPrefs.isLocked         = false
+            KopanowPrefs.lockReason       = null
+            KopanowPrefs.amountDue        = null
+            KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT  // reset tamper flag
+            KopanowPrefs.isPasscodeLocked = false
+            KopanowPrefs.passcodeHash     = null
+            Log.i(TAG, "unlockDevice: all lock state cleared (incl. tamper + passcode)")
             true
         } catch (e: Exception) {
             Log.e(TAG, "unlockDevice failed", e)
