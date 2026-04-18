@@ -375,6 +375,21 @@ router.post('/command', async (req, res) => {
 
     deviceUpdate.updated_at = new Date().toISOString();
 
+    const persistCommandToDb = async () => {
+      await supabase.from('devices').update(deviceUpdate).eq('id', device.id);
+      if (Object.keys(loanUpdate).length) {
+        await supabase.from('loans').update({ ...loanUpdate, updated_at: new Date().toISOString() }).eq('loan_id', device.loan_id);
+      }
+    };
+
+    // UNLOCK / REMOVE_ADMIN: always persist dashboard state so devices + loans show Active / Removed
+    // even when FCM fails (token invalid, Firebase down). Push is best-effort; DB is ops truth.
+    const persistRegardlessOfFcm = command === 'UNLOCK_DEVICE' || command === 'REMOVE_ADMIN';
+
+    if (persistRegardlessOfFcm && Object.keys(deviceUpdate).length) {
+      await persistCommandToDb();
+    }
+
     // ── Short-circuit on invalid / fake tokens ────────────────────────────────
     if (fcmResult && !fcmResult.success) {
       // Auto-clear stale (expired) tokens so the dashboard shows the device needs re-enrollment
@@ -396,9 +411,8 @@ router.post('/command', async (req, res) => {
     }
 
     // Update device + loan state in DB (command was sent or is a lock we persist regardless)
-    await supabase.from('devices').update(deviceUpdate).eq('id', device.id);
-    if (Object.keys(loanUpdate).length) {
-      await supabase.from('loans').update({ ...loanUpdate, updated_at: new Date().toISOString() }).eq('loan_id', device.loan_id);
+    if (!persistRegardlessOfFcm) {
+      await persistCommandToDb();
     }
 
     if (logType) {
