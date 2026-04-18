@@ -79,9 +79,7 @@ class LockDeviceWorker(
 
         val response = heartbeatResult.data
         if (response != null) {
-            KopanowPrefs.isLocked   = response.locked
-            KopanowPrefs.lockReason = response.lockReason
-            KopanowPrefs.amountDue  = response.amountDue
+            HeartbeatLockSync.applyLockFieldsFromResponse(response)
 
             // Restore lock type from backend — determines whether user sees pay button or not
             // Backend returns action="LOCK" with lockType="TAMPER" for tamper scenarios
@@ -94,8 +92,8 @@ class LockDeviceWorker(
                     KopanowPrefs.LOCK_TYPE_PAYMENT
             }
 
-            // Backend says unlocked — send broadcast so LockScreenActivity verifies + dismisses
-            if (!response.locked) {
+            // Backend says unlocked — only tear down if no local PIN session (avoid stale `locked=false`).
+            if (HeartbeatLockSync.shouldApplyPassiveUnlock(response)) {
                 DeviceSecurityManager.unlockDevice(context)
                 context.sendBroadcast(
                     Intent(KopanowFCMService.ACTION_UNLOCK_SCREEN).apply {

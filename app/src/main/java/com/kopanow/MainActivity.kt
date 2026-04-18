@@ -236,7 +236,16 @@ class MainActivity : AppCompatActivity() {
     private fun showDashboard() {
         cardEnrollment.visibility = View.GONE
         cardDashboard.visibility = View.VISIBLE
-        tvWelcome.text = "Hello, ${KopanowPrefs.borrowerId ?: "User"}"
+        tvWelcome.text = helloLine()
+    }
+
+    /** Prefer registration full name; fallback to borrower id for display. */
+    private fun helloLine(): String = "Hello, ${borrowerFirstNameForUi()}"
+
+    private fun borrowerFirstNameForUi(): String {
+        val n = KopanowPrefs.fullName?.trim().orEmpty()
+        if (n.isNotEmpty()) return n
+        return KopanowPrefs.borrowerId?.trim().orEmpty().ifEmpty { "User" }
     }
 
     private fun fetchLoanDetails() {
@@ -248,6 +257,10 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 if (result.success && result.data != null) {
                     val loan = result.data
+                    loan.borrowerFullName?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                        KopanowPrefs.fullName = it
+                    }
+                    tvWelcome.text = helloLine()
                     tvLoanBalance.text = loan.balance ?: "TSh 0.00"
                     tvNextDue.text = loan.nextDueDate ?: "N/A"
                     tvStatusBadge.text = loan.loanStatus?.replaceFirstChar { it.uppercase() } ?: "Unknown"

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -81,7 +82,7 @@ class OverlayLockService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_START, null -> {
-                startForeground(NOTIFICATION_ID, buildNotification())
+                startForegroundWithLockType()
                 handler.removeCallbacks(loop)
                 handler.post(loop)
                 return START_STICKY
@@ -169,6 +170,20 @@ class OverlayLockService : Service() {
             isPasscode -> "Enter the PIN provided by Kopanow support."
             isTamper -> KopanowPrefs.lockReason ?: "Locked due to a security violation."
             else -> KopanowPrefs.lockReason ?: "Please make a payment to unlock your device."
+        }
+    }
+
+    private fun startForegroundWithLockType() {
+        val n = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                n,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            startForeground(NOTIFICATION_ID, n)
         }
     }
 

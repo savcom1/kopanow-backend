@@ -216,6 +216,7 @@ data class LoanDetailsResponse(
     @SerializedName("loan_status")   val loanStatus: String?,
     @SerializedName("balance")       val balance: String?,
     @SerializedName("next_due_date") val nextDueDate: String?,
+    @SerializedName("borrower_full_name") val borrowerFullName: String? = null,
     @SerializedName("message")       val message: String?
 )
 

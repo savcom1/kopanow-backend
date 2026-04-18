@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -61,9 +62,10 @@ class KopanowLockService : Service() {
         /**
          * True while the watchdog must keep relaunching [LockScreenActivity] / overlay.
          * Single source of truth for the lock loop and for restart-after-kill scheduling.
+         * Includes [PasscodeManager.hasActivePasscode] so prefs cannot desync from real PIN state.
          */
         fun shouldEnforceLockLoop(): Boolean =
-            KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked
+            KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked || PasscodeManager.hasActivePasscode()
 
         /**
          * If the device is in a lock/tamper/passcode state but the foreground service was killed
@@ -129,7 +131,7 @@ class KopanowLockService : Service() {
         }
 
         Log.i(TAG, "Starting foreground watchdog")
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForegroundWithLockType()
 
         if (!running) {
             running = true
@@ -202,6 +204,24 @@ class KopanowLockService : Service() {
     }
 
     // ── Notification ─────────────────────────────────────────────────────────
+
+    /**
+     * Android 14+ (targetSdk 34+): must pass [ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE]
+     * to match manifest `foregroundServiceType="specialUse"` or the system can crash the FGS.
+     */
+    private fun startForegroundWithLockType() {
+        val n = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                n,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            startForeground(NOTIFICATION_ID, n)
+        }
+    }
 
     private fun buildNotification(): Notification {
         val pi = PendingIntent.getActivity(

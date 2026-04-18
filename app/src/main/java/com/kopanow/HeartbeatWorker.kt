@@ -167,9 +167,7 @@ class HeartbeatWorker(
         Log.i(TAG, "Heartbeat OK — action=${response.action}, locked=${response.locked}, msg=${response.message}")
 
         // ── Sync local state ──────────────────────────────────────────────
-        KopanowPrefs.isLocked   = response.locked
-        KopanowPrefs.lockReason = response.lockReason
-        KopanowPrefs.amountDue  = response.amountDue
+        HeartbeatLockSync.applyLockFieldsFromResponse(response)
 
         RepaymentAlarmScheduler.schedule(context, response.invoices)
         RepaymentOverdueChecker.checkAndEnforce(context)
@@ -200,7 +198,7 @@ class HeartbeatWorker(
                     response.lockReason?.let { KopanowPrefs.lockReason = it }
                     response.amountDue?.let  { KopanowPrefs.amountDue  = it }
                     engageBackendLock(response)
-                } else {
+                } else if (HeartbeatLockSync.shouldApplyPassiveUnlock(response)) {
                     DeviceSecurityManager.unlockDevice(context)
                 }
                 Log.d(TAG, "No action command — local state synced (locked=${response.locked})")
