@@ -141,6 +141,7 @@ async function loadDashboard() {
         </div>
       </td>
       <td class="mono">${d.loan_id}</td>
+      <td class="mono text-muted" style="font-size:12px">${d.device_id ? d.device_id.slice(0, 12) + '…' : '—'}</td>
       <td>${d.device_model || '—'}</td>
       <td>${statusBadge(d.status)}</td>
       <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New — no heartbeat yet</span>'}</td>
@@ -276,6 +277,28 @@ async function openModal(mongoId) {
     ['Loan ID',        d.loan_id],
     ['Device ID',      d.device_id || '—'],
     ['Model',          d.device_model || '—'],
+  ];
+
+  const di = d.device_info;
+  if (di && typeof di === 'object') {
+    if (di.manufacturer) fields.push(['Manufacturer', di.manufacturer]);
+    if (di.brand)        fields.push(['Brand', di.brand]);
+    if (di.android_version) fields.push(['Android', di.android_version]);
+    if (di.sdk_version != null) fields.push(['API level', String(di.sdk_version)]);
+    if (di.screen_width_dp != null && di.screen_height_dp != null) {
+      fields.push(['Screen (dp)', `${di.screen_width_dp} × ${di.screen_height_dp}`]);
+    }
+    if (di.screen_density) fields.push(['Density (dpi)', String(di.screen_density)]);
+    if (di.battery_pct != null) fields.push(['Battery (%)', String(di.battery_pct)]);
+    if (di.build_product) fields.push(['Build product', di.build_product]);
+    if (di.build_device)  fields.push(['Build device', di.build_device]);
+    if (di.is_rooted === true) fields.push(['Rooted', '<span style="color:var(--red)">Yes</span>']);
+    if (di.source === 'loan_registration') fields.push(['Profile source', 'Loan application']);
+    if (di.registered_at) fields.push(['Registered at', fmtDate(di.registered_at)]);
+    if (di.mdm_enrolled_at) fields.push(['MDM enrolled', fmtDate(di.mdm_enrolled_at)]);
+  }
+
+  fields.push(
     ['Connectivity',   connectivityBadge(isOnline(d.last_seen))],
     ['Status',         statusBadge(d.status)],
     ['Locked',         d.is_locked ? '🔒 Yes' : '🔓 No'],
@@ -287,7 +310,7 @@ async function openModal(mongoId) {
     ['Last Seen',      timeAgo(d.last_seen)],
     ['Outstanding',    l ? `TZS ${Number(l.outstanding_amount).toLocaleString()}` : '—'],
     ['Next Due',       l ? fmtDate(l.next_due_date) : '—'],
-  ];
+  );
 
   $('#modal-body').innerHTML = fields.map(([label, val]) => `
     <div class="detail-row">

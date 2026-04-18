@@ -1,6 +1,7 @@
 -- =====================================================================
 -- Migration: Add passcode columns to devices table
 -- Run this once in your Supabase SQL editor.
+-- NOTE: Fresh installs: ../db/schema.sql already defines these columns.
 -- =====================================================================
 
 -- passcode_hash:   SHA-256 of the admin-issued PIN (never the raw PIN)

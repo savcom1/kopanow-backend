@@ -1,6 +1,7 @@
 -- =====================================================================
 -- Migration: payment_references table
 -- Run once in Supabase SQL editor
+-- NOTE: For new installs, prefer ../db/schema.sql (includes this table).
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS payment_references (

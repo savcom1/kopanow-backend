@@ -21,8 +21,9 @@ router.get('/devices', async (req, res) => {
     let query = supabase.from('devices').select('*', { count: 'exact' });
     if (status && status !== 'all') query = query.eq('status', status);
     if (search) {
+      const q = String(search).replace(/,/g, '');
       query = query.or(
-        `borrower_id.ilike.%${search}%,loan_id.ilike.%${search}%,device_model.ilike.%${search}%`
+        `borrower_id.ilike.%${q}%,loan_id.ilike.%${q}%,device_model.ilike.%${q}%,device_id.ilike.%${q}%`
       );
     }
 

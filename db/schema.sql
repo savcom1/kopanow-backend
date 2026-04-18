@@ -1,77 +1,46 @@
 -- ============================================================
--- Kopanow Backend — Supabase Schema
--- Run once in: Supabase Dashboard → SQL Editor → Run
+-- Kopanow Backend — Supabase / PostgreSQL schema (canonical)
+-- Run once in: Supabase Dashboard → SQL Editor → Run entire file
+--
+-- Covers tables and columns referenced by:
+--   routes/{device,loan,admin,payment-reference,mpesa,pin}.js
+--   helpers/{deviceEnrollment,notify,tamperLog}.js, cron/jobs.js
+--
+-- Incremental migrations in ../migrations/ are kept for existing DBs
+-- that were created from older snippets; a NEW project only needs this file.
 -- ============================================================
 
--- ── Devices ──────────────────────────────────────────────────
--- One row per enrolled borrower handset.
-CREATE TABLE IF NOT EXISTS devices (
-  id                       UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  borrower_id              TEXT        NOT NULL,
-  loan_id                  TEXT        NOT NULL,
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-  -- Scenario 3 defence: stable ANDROID_ID / fingerprint hash
-  device_id                TEXT,
-  fcm_token                TEXT,
-  device_model             TEXT,
-
-  -- Lifecycle status
-  status                   TEXT        NOT NULL DEFAULT 'registered'
-                             CHECK (status IN ('registered','active','locked','admin_removed','suspended')),
-
-  -- DPC / lock state
-  dpc_active               BOOLEAN     NOT NULL DEFAULT TRUE,
-  is_locked                BOOLEAN     NOT NULL DEFAULT FALSE,
-  lock_reason              TEXT,
-  amount_due               TEXT,
-
-  -- M-Pesa
-  mpesa_phone              TEXT,
-  last_checkout_request_id TEXT,
-
-  -- Heartbeat telemetry (stored as JSON snapshot)
-  last_seen                TIMESTAMPTZ,
-  last_heartbeat           JSONB,
-
-  -- Rich device info collected at enrollment
-  -- { manufacturer, brand, android_version, sdk_version, screen_density,
-  --   screen_width_dp, screen_height_dp, network_type, battery_pct }
-  device_info              JSONB,
-
-  -- Embedded tamper events (capped at 20 in application logic)
-  tamper_events            JSONB       NOT NULL DEFAULT '[]',
-
-  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  UNIQUE (borrower_id, loan_id)
-);
-
--- Add device_info to existing table (safe to run multiple times)
-ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_info JSONB;
-
-
--- Fast lookups used by heartbeat & lock routes
-CREATE INDEX IF NOT EXISTS idx_devices_status      ON devices (status);
-CREATE INDEX IF NOT EXISTS idx_devices_is_locked   ON devices (is_locked);
-CREATE INDEX IF NOT EXISTS idx_devices_last_seen   ON devices (last_seen);
-CREATE INDEX IF NOT EXISTS idx_devices_device_id   ON devices (device_id);
-
--- Auto-update updated_at on any row change
+-- ── Shared trigger helper ───────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$;
 
-DROP TRIGGER IF EXISTS trg_devices_updated_at ON devices;
-CREATE TRIGGER trg_devices_updated_at
-  BEFORE UPDATE ON devices
+
+-- ── Registrations (loan onboarding profile) ─────────────────
+-- Used by: POST /api/loan/request, GET mpesa stk phone fallback
+CREATE TABLE IF NOT EXISTS registrations (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id   TEXT NOT NULL UNIQUE,
+  full_name     TEXT NOT NULL,
+  national_id   TEXT NOT NULL,
+  phone         TEXT NOT NULL,
+  region        TEXT NOT NULL,
+  address       TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_registrations_updated_at ON registrations;
+CREATE TRIGGER trg_registrations_updated_at
+  BEFORE UPDATE ON registrations
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
--- ── Loans ─────────────────────────────────────────────────────
--- One row per loan agreement.
+-- ── Loans ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS loans (
-  id                 UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   loan_id            TEXT        UNIQUE NOT NULL,
   borrower_id        TEXT        NOT NULL,
 
@@ -85,9 +54,11 @@ CREATE TABLE IF NOT EXISTS loans (
   days_overdue       INTEGER     NOT NULL DEFAULT 0,
 
   device_status      TEXT        NOT NULL DEFAULT 'unregistered'
-                       CHECK (device_status IN ('unregistered','registered','active','locked','admin_removed','suspended')),
+                       CHECK (device_status IN (
+                         'unregistered','registered','active','locked',
+                         'admin_removed','suspended'
+                       )),
 
-  -- Array of guarantor objects: [{name, phone, national_id}]
   guarantors         JSONB       NOT NULL DEFAULT '[]',
 
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,37 +74,130 @@ CREATE TRIGGER trg_loans_updated_at
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
--- ── Payments ──────────────────────────────────────────────────
--- Idempotent M-Pesa payment records.
+-- ── Devices (one row per borrower_id + loan_id) ───────────
+-- PIN columns: add_passcode_columns.sql / add_system_pin_column.sql (also included here)
+CREATE TABLE IF NOT EXISTS devices (
+  id                       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id              TEXT        NOT NULL,
+  loan_id                  TEXT        NOT NULL,
+
+  device_id                TEXT,
+  fcm_token                TEXT,
+  device_model             TEXT,
+
+  status                   TEXT        NOT NULL DEFAULT 'registered'
+                           CHECK (status IN (
+                             'registered','active','locked','admin_removed','suspended'
+                           )),
+
+  dpc_active               BOOLEAN     NOT NULL DEFAULT TRUE,
+  is_locked                BOOLEAN     NOT NULL DEFAULT FALSE,
+  lock_reason              TEXT,
+  amount_due               TEXT,
+
+  mpesa_phone              TEXT,
+  last_checkout_request_id TEXT,
+
+  last_seen                TIMESTAMPTZ,
+  last_heartbeat           JSONB,
+  device_info              JSONB,
+  tamper_events            JSONB       NOT NULL DEFAULT '[]',
+
+  passcode_hash            TEXT,
+  passcode_active          BOOLEAN     NOT NULL DEFAULT FALSE,
+  passcode_set_at          TIMESTAMPTZ,
+  system_pin               TEXT,
+
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (borrower_id, loan_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_status       ON devices (status);
+CREATE INDEX IF NOT EXISTS idx_devices_is_locked      ON devices (is_locked);
+CREATE INDEX IF NOT EXISTS idx_devices_last_seen    ON devices (last_seen);
+CREATE INDEX IF NOT EXISTS idx_devices_device_id    ON devices (device_id);
+CREATE INDEX IF NOT EXISTS idx_devices_passcode_active
+  ON devices (passcode_active)
+  WHERE passcode_active = TRUE;
+
+DROP TRIGGER IF EXISTS trg_devices_updated_at ON devices;
+CREATE TRIGGER trg_devices_updated_at
+  BEFORE UPDATE ON devices
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- ── Loan requests (immutable application rows) ──────────────
+CREATE TABLE IF NOT EXISTS loan_requests (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id TEXT NOT NULL,
+  loan_id     TEXT NOT NULL,
+  amount_tzs  NUMERIC NOT NULL,
+  tenor_days  INTEGER NOT NULL,
+  purpose     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'submitted'
+              CHECK (status IN ('submitted','approved','rejected','cancelled')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower ON loan_requests (borrower_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_loan_requests_loan_id ON loan_requests (loan_id);
+
+
+-- ── Payment references (borrower-submitted M-Pesa refs) ───
+CREATE TABLE IF NOT EXISTS payment_references (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id    TEXT NOT NULL,
+  loan_id        TEXT NOT NULL,
+  mpesa_ref      TEXT NOT NULL,
+  amount_claimed NUMERIC(12,2),
+  notes          TEXT,
+  submitted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','verified','rejected')),
+  verified_by    TEXT,
+  verified_at    TIMESTAMPTZ,
+  reviewer_note  TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_ref_mpesa
+  ON payment_references (mpesa_ref);
+CREATE INDEX IF NOT EXISTS idx_payment_ref_status
+  ON payment_references (status, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_ref_borrower
+  ON payment_references (borrower_id, loan_id);
+
+
+-- ── Payments (verified M-Pesa / audit from admin verify) ─
 CREATE TABLE IF NOT EXISTS payments (
-  id           UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  mpesa_ref    TEXT        UNIQUE NOT NULL,     -- MpesaReceiptNumber (idempotency key)
-  loan_id      TEXT        NOT NULL,
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mpesa_ref    TEXT UNIQUE NOT NULL,
+  loan_id      TEXT NOT NULL,
   borrower_id  TEXT,
-  amount       NUMERIC     NOT NULL,
+  amount       NUMERIC NOT NULL,
   paid_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  is_processed BOOLEAN     NOT NULL DEFAULT FALSE,
-  raw_callback JSONB,                            -- full Safaricom callback stored for audit
+  is_processed BOOLEAN NOT NULL DEFAULT FALSE,
+  raw_callback JSONB,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_payments_loan_id ON payments (loan_id);
 
 
--- ── Tamper Logs ───────────────────────────────────────────────
--- Immutable forensic audit trail — never deleted.
+-- ── Tamper logs ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tamper_logs (
-  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  borrower_id TEXT        NOT NULL,
-  loan_id     TEXT        NOT NULL,
-  event_type  TEXT        NOT NULL,
-  severity    TEXT        NOT NULL DEFAULT 'MEDIUM'
-                CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
-  source      TEXT,       -- 'device' | 'cron' | 'ops'
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id TEXT NOT NULL,
+  loan_id     TEXT NOT NULL,
+  event_type  TEXT NOT NULL,
+  severity    TEXT NOT NULL DEFAULT 'MEDIUM'
+              CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+  source      TEXT,
   device_id   TEXT,
   detail      TEXT,
-  auto_action TEXT,       -- FCM command sent in response
-  reviewed    BOOLEAN     NOT NULL DEFAULT FALSE,
+  auto_action TEXT,
+  reviewed    BOOLEAN NOT NULL DEFAULT FALSE,
   reviewed_at TIMESTAMPTZ,
   reviewed_by TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -144,26 +208,22 @@ CREATE INDEX IF NOT EXISTS idx_tamper_logs_severity ON tamper_logs (severity);
 CREATE INDEX IF NOT EXISTS idx_tamper_logs_reviewed ON tamper_logs (reviewed);
 
 
--- ── Notifications Log ─────────────────────────────────────────────
--- Audit trail of every SMS and FCM notification ever dispatched.
--- Used for deduplication (same event_type won't fire twice per day)
--- and admin visibility into the messaging pipeline.
+-- ── Notifications log (SMS/FCM audit + dedupe) ─────────────
 CREATE TABLE IF NOT EXISTS notifications_log (
-  id           UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  borrower_id  TEXT        NOT NULL,
-  loan_id      TEXT        NOT NULL,
-  channel      TEXT        NOT NULL CHECK (channel IN ('sms', 'fcm', 'both')),
-  event_type   TEXT        NOT NULL,
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borrower_id  TEXT NOT NULL,
+  loan_id      TEXT NOT NULL,
+  channel      TEXT NOT NULL CHECK (channel IN ('sms', 'fcm', 'both')),
+  event_type   TEXT NOT NULL,
   phone        TEXT,
   message      TEXT,
-  status       TEXT        NOT NULL DEFAULT 'sent'
-                 CHECK (status IN ('sent', 'failed', 'skipped')),
+  status       TEXT NOT NULL DEFAULT 'sent'
+               CHECK (status IN ('sent', 'failed', 'skipped')),
   error        TEXT,
-  days_state   INTEGER,    -- negative = days before due, positive = days overdue
+  days_state   INTEGER,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_notif_log_borrower ON notifications_log (borrower_id, loan_id);
 CREATE INDEX IF NOT EXISTS idx_notif_log_event    ON notifications_log (event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_notif_log_status   ON notifications_log (status);
-

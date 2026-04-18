@@ -1,6 +1,7 @@
 -- ============================================================
 -- Migration: add system_pin column to devices table
 -- Run this in the Supabase SQL Editor
+-- NOTE: Fresh installs: ../db/schema.sql already defines this column.
 -- ============================================================
 
 -- Encrypted system PIN reported back from the device.

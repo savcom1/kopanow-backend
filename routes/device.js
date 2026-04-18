@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../helpers/supabase');
+const { assertDeviceFreeForEnrollment } = require('../helpers/deviceEnrollment');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
 
@@ -11,44 +12,6 @@ const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('
 function daysOverdue(nextDueDate) {
   if (!nextDueDate) return 0;
   return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
-}
-
-/**
- * One physical device (device_id) may only be linked to a single Kopanow enrollment
- * (borrower_id + loan_id). Re-syncing the same enrollment is allowed.
- *
- * @returns {{ ok: true } | { ok: false, reason: string }}
- */
-async function assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id) {
-  const id = device_id != null ? String(device_id).trim() : '';
-  if (!id) {
-    return { ok: false, reason: 'Missing device identifier — cannot verify enrollment.' };
-  }
-  if (!borrower_id || !loan_id) {
-    return { ok: false, reason: 'borrower_id and loan_id are required.' };
-  }
-
-  const { data: rows, error } = await supabase
-    .from('devices')
-    .select('borrower_id, loan_id')
-    .eq('device_id', id);
-
-  if (error) throw error;
-
-  const conflict = (rows || []).find(
-    (r) => r.borrower_id !== borrower_id || r.loan_id !== loan_id
-  );
-  if (conflict) {
-    console.warn(
-      `[enrollment] BLOCK device_id=${id} already linked to borrower=${conflict.borrower_id} loan=${conflict.loan_id}`
-    );
-    return {
-      ok: false,
-      reason:
-        'This device is already enrolled in Kopanow under another loan. One device cannot be used for two loans.',
-    };
-  }
-  return { ok: true };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,18 +64,34 @@ router.post('/register', async (req, res) => {
       return res.status(403).json({ success: false, error: enrollment.reason });
     }
 
-    // Bundle all extra device info into a JSONB object
+    const { data: existingRow } = await supabase
+      .from('devices')
+      .select('device_info')
+      .eq('borrower_id', borrower_id)
+      .eq('loan_id', loan_id)
+      .maybeSingle();
+
+    const prevInfo =
+      existingRow?.device_info && typeof existingRow.device_info === 'object'
+        ? existingRow.device_info
+        : {};
+
+    const enrolledAtIso = enrolled_at ? new Date(enrolled_at).toISOString() : new Date().toISOString();
+
+    // Merge so loan_registration snapshot (build_product, etc.) is not wiped at MDM enroll
     const device_info = {
-      manufacturer: manufacturer || null,
-      brand: brand || null,
-      android_version: android_version || null,
-      sdk_version: sdk_version || null,
-      screen_density: screen_density || null,
-      screen_width_dp: screen_width_dp || null,
-      screen_height_dp: screen_height_dp || null,
-      battery_pct: battery_pct ?? null,
-      is_rooted: is_rooted ?? false,
-      enrolled_at: enrolled_at ? new Date(enrolled_at).toISOString() : new Date().toISOString()
+      ...prevInfo,
+      manufacturer: manufacturer ?? prevInfo.manufacturer ?? null,
+      brand: brand ?? prevInfo.brand ?? null,
+      android_version: android_version ?? prevInfo.android_version ?? null,
+      sdk_version: sdk_version ?? prevInfo.sdk_version ?? null,
+      screen_density: screen_density ?? prevInfo.screen_density ?? null,
+      screen_width_dp: screen_width_dp ?? prevInfo.screen_width_dp ?? null,
+      screen_height_dp: screen_height_dp ?? prevInfo.screen_height_dp ?? null,
+      battery_pct: battery_pct ?? prevInfo.battery_pct ?? null,
+      is_rooted: is_rooted ?? prevInfo.is_rooted ?? false,
+      enrolled_at: enrolledAtIso,
+      mdm_enrolled_at: enrolledAtIso
     };
 
     // Upsert device — onConflict resolves by borrower_id + loan_id
@@ -128,6 +107,7 @@ router.post('/register', async (req, res) => {
         mpesa_phone:  mpesa_phone  || null,
         device_info,
         status:       'registered',
+        dpc_active:   true,
         last_seen:    now,
         updated_at:   now
       }, { onConflict: 'borrower_id,loan_id' })

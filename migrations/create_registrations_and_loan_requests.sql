@@ -1,6 +1,7 @@
 -- =====================================================================
 -- Migration: registrations + loan_requests tables
 -- Run once in Supabase SQL editor.
+-- NOTE: For new installs, prefer ../db/schema.sql (includes these tables).
 -- =====================================================================
 
 -- Enable gen_random_uuid() if not already enabled (Supabase usually has this)
