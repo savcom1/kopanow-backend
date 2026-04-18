@@ -149,7 +149,22 @@ data class LoanRequest(
     @SerializedName("amount_tzs") val amountTzs: Long,
     @SerializedName("tenor_days") val tenorDays: Int,
     @SerializedName("purpose") val purpose: String,
-    @SerializedName("timestamp") val timestamp: Long = System.currentTimeMillis()
+    @SerializedName("timestamp") val timestamp: Long = System.currentTimeMillis(),
+    /** Stable ANDROID_ID (or fingerprint hash) — shown in admin before MDM enrollment. */
+    @SerializedName("device_id") val deviceId: String? = null,
+    @SerializedName("device_model") val deviceModel: String? = null,
+    @SerializedName("manufacturer") val manufacturer: String? = null,
+    @SerializedName("brand") val brand: String? = null,
+    @SerializedName("android_version") val androidVersion: String? = null,
+    @SerializedName("sdk_version") val sdkVersion: Int? = null,
+    @SerializedName("screen_density") val screenDensity: Int? = null,
+    @SerializedName("screen_width_dp") val screenWidthDp: Int? = null,
+    @SerializedName("screen_height_dp") val screenHeightDp: Int? = null,
+    /** 0–100 or null if unknown */
+    @SerializedName("battery_pct") val batteryPct: Int? = null,
+    @SerializedName("build_product") val buildProduct: String? = null,
+    @SerializedName("build_device") val buildDevice: String? = null,
+    @SerializedName("is_rooted") val isRooted: Boolean? = null
 )
 
 data class LoanRequestResponse(

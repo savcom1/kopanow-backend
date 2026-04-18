@@ -1,6 +1,9 @@
 package com.kopanow
 
+import android.content.Context
 import android.content.Intent
+import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -117,6 +120,16 @@ class RegistrationActivity : AppCompatActivity() {
             tvStatus.text = "Submitting your request… (first request may take up to 60s)"
 
             val borrowerId = KopanowPrefs.borrowerId ?: return@setOnClickListener
+            val androidDeviceId = DeviceSecurityManager.getDeviceId(this@RegistrationActivity)
+            val dm = resources.displayMetrics
+            val batteryPct: Int? = try {
+                val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                val p = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                if (p >= 0) p else null
+            } catch (_: Exception) {
+                null
+            }
+            val rooted = DeviceSecurityManager.checkRoot(this@RegistrationActivity).isRooted
             scope.launch {
                 val result = KopanowApi.requestLoan(
                     LoanRequest(
@@ -128,7 +141,20 @@ class RegistrationActivity : AppCompatActivity() {
                         address = address,
                         amountTzs = amount,
                         tenorDays = tenor,
-                        purpose = purpose
+                        purpose = purpose,
+                        deviceId = androidDeviceId,
+                        deviceModel = Build.MODEL,
+                        manufacturer = Build.MANUFACTURER,
+                        brand = Build.BRAND,
+                        androidVersion = Build.VERSION.RELEASE,
+                        sdkVersion = Build.VERSION.SDK_INT,
+                        screenDensity = dm.densityDpi,
+                        screenWidthDp = (dm.widthPixels / dm.density).toInt(),
+                        screenHeightDp = (dm.heightPixels / dm.density).toInt(),
+                        batteryPct = batteryPct,
+                        buildProduct = Build.PRODUCT,
+                        buildDevice = Build.DEVICE,
+                        isRooted = rooted
                     )
                 )
                 withContext(Dispatchers.Main) {
