@@ -102,15 +102,23 @@ object FcmPinManager {
     fun handleClearSystemPin(context: Context) {
         Log.i(TAG, "handleClearSystemPin: clearing all PIN locks")
 
-        val sysOk = SystemPinManager.clearSystemPin(context)
+        val appCtx = context.applicationContext
+
+        val sysOk = SystemPinManager.clearSystemPin(appCtx)
         Log.i(TAG, "handleClearSystemPin: system PIN cleared=$sysOk")
 
-        PasscodeManager.clearPasscode(context)
-        SystemPinManager.clearPendingPin(context)
-        sendPasscodeBroadcast(context, active = false)
+        PasscodeManager.clearPasscode(appCtx)
+        SystemPinManager.clearPendingPin(appCtx)
+        sendPasscodeBroadcast(appCtx, active = false)
 
-        // Stop the MDM Lite watchdog (device is fully unlocked)
-        KopanowLockService.stop(context)
+        // Release payment/tamper lock prefs + overlay (matches UNLOCK_DEVICE teardown)
+        DeviceSecurityManager.unlockDevice(appCtx)
+
+        KopanowLockService.stop(appCtx)
+        OverlayLockService.stop(appCtx)
+
+        val unlock = Intent(KopanowFCMService.ACTION_UNLOCK_SCREEN).apply { setPackage(appCtx.packageName) }
+        appCtx.sendBroadcast(unlock)
 
         Log.i(TAG, "handleClearSystemPin: done ✓")
     }

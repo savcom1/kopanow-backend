@@ -96,6 +96,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Offline-safe: day-after-due PIN enforcement from cached invoices (no server required).
+        RepaymentOverdueChecker.checkAndEnforce(applicationContext)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -276,6 +279,7 @@ class MainActivity : AppCompatActivity() {
                 frpSeeded = KopanowPrefs.frpSeeded,
                 timestamp = System.currentTimeMillis(),
                 mdmCompliance = MdmComplianceCollector.collect(this@MainActivity),
+                appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
             )
             KopanowApi.heartbeat(request) // Silent check-in to update "Last Seen"
         }

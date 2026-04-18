@@ -7,12 +7,30 @@ import java.time.Instant
 import java.time.ZoneId
 
 /**
- * If the device missed the exact alarm (power off), catch up when heartbeat/boot runs:
+ * If the device missed the exact alarm (power off), catch up when heartbeat/boot/main runs:
  * day after due @ 08:00 local has passed and invoice still unpaid → local PIN lock.
+ *
+ * **Offline paths:** [RepaymentAlarmReceiver] (exact alarm), [BootReceiver], [HeartbeatWorker]
+ * (periodic work no longer requires network), [MainActivity] on launch.
  */
 object RepaymentOverdueChecker {
 
     private const val TAG = "RepaymentOverdue"
+
+    /**
+     * Pure rule: unpaid invoice → enforce only after start of calendar day after due, 08:00 local.
+     */
+    internal fun shouldEnforceLocalPinNow(inv: LoanInvoiceItem, now: Instant, zone: ZoneId): Boolean {
+        if (inv.status.equals("paid", ignoreCase = true)) return false
+        val dueInstant = try {
+            Instant.parse(inv.dueDate)
+        } catch (_: Exception) {
+            return false
+        }
+        val dueLocalDate = dueInstant.atZone(zone).toLocalDate()
+        val pinNotBefore = dueLocalDate.plusDays(1).atTime(8, 0).atZone(zone).toInstant()
+        return !now.isBefore(pinNotBefore)
+    }
 
     fun checkAndEnforce(context: Context) {
         if (!KopanowPrefs.hasSession) return
@@ -28,15 +46,7 @@ object RepaymentOverdueChecker {
         val now = Instant.now()
 
         for (inv in invoices) {
-            if (inv.status.equals("paid", ignoreCase = true)) continue
-            val dueInstant = try {
-                Instant.parse(inv.dueDate)
-            } catch (_: Exception) {
-                continue
-            }
-            val dueLocalDate = dueInstant.atZone(zone).toLocalDate()
-            val pinNotBefore = dueLocalDate.plusDays(1).atTime(8, 0).atZone(zone).toInstant()
-            if (now.isBefore(pinNotBefore)) continue
+            if (!shouldEnforceLocalPinNow(inv, now, zone)) continue
 
             if (KopanowPrefs.localPinLockInvoiceNumber == inv.invoiceNumber) return
 

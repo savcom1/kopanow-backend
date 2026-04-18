@@ -543,7 +543,9 @@ class LockScreenActivity : AppCompatActivity() {
                     dpcActive  = DeviceSecurityManager.isAdminActive(this@LockScreenActivity),
                     isSafeMode = false, batteryPct = -1,
                     frpSeeded  = KopanowPrefs.frpSeeded,
-                    timestamp  = System.currentTimeMillis()
+                    timestamp  = System.currentTimeMillis(),
+                    mdmCompliance = null,
+                    appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
                 )
                 val res = KopanowApi.heartbeat(req)
                 if (res.success && res.data?.locked == false) {

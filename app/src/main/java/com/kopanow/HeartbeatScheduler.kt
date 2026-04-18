@@ -35,8 +35,10 @@ object HeartbeatScheduler {
      *  • Any previously pending run is replaced, avoiding duplicate jobs.
      */
     fun schedule(context: Context) {
+        // NOT_REQUIRED: [RepaymentOverdueChecker] + cached invoice alarms must run offline.
+        // The heartbeat POST still fails without network; WorkManager retries with backoff.
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
             .build()
 
         val request = PeriodicWorkRequestBuilder<HeartbeatWorker>(

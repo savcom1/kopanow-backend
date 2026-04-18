@@ -34,6 +34,11 @@ data class HeartbeatRequest(
     @SerializedName("timestamp")    val timestamp: Long,
     /** Permission / capability snapshot for admin dashboard. */
     @SerializedName("mdm_compliance") val mdmCompliance: MdmCompliancePayload? = null,
+    /**
+     * True while the app is enforcing a lock (payment/tamper UI or passcode).
+     * Lets the server clear stale `devices.is_locked` when the device is actually unlocked.
+     */
+    @SerializedName("app_lock_active") val appLockActive: Boolean,
 )
 
 data class HeartbeatResponse(

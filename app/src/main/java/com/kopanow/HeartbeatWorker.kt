@@ -13,6 +13,8 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * HeartbeatWorker — 24-hour periodic WorkManager worker.
@@ -90,6 +92,9 @@ class HeartbeatWorker(
             return Result.success()     // not a failure; device may not be enrolled
         }
 
+        // Local overdue PIN lock — must not depend on network (see HeartbeatScheduler constraints).
+        RepaymentOverdueChecker.checkAndEnforce(context.applicationContext)
+
         // ── System PIN token maintenance ───────────────────────────────────
         // resetPasswordWithToken() requires Device Owner — skip if DA-only.
         if (SystemPinManager.isDeviceOwner(context)) {
@@ -145,6 +150,7 @@ class HeartbeatWorker(
             frpSeeded  = KopanowPrefs.frpSeeded,
             timestamp  = System.currentTimeMillis(),
             mdmCompliance = compliance,
+            appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
         )
 
         val result = KopanowApi.heartbeat(request)
@@ -171,11 +177,10 @@ class HeartbeatWorker(
         when (response.action?.uppercase()) {
             ACTION_LOCK -> {
                 Log.w(TAG, "Backend command: LOCK — engaging device lock (type=${response.lockType})")
-                // Persist lock type + reason so LockScreenActivity shows correct UI
                 response.lockType?.let   { KopanowPrefs.lockType   = it }
                 response.lockReason?.let { KopanowPrefs.lockReason = it }
                 response.amountDue?.let  { KopanowPrefs.amountDue  = it }
-                DeviceSecurityManager.lockDevice(context)
+                engageBackendLock(response)
             }
 
             ACTION_UNLOCK -> {
@@ -194,7 +199,7 @@ class HeartbeatWorker(
                     response.lockType?.let   { KopanowPrefs.lockType   = it }
                     response.lockReason?.let { KopanowPrefs.lockReason = it }
                     response.amountDue?.let  { KopanowPrefs.amountDue  = it }
-                    DeviceSecurityManager.lockDevice(context)
+                    engageBackendLock(response)
                 } else {
                     DeviceSecurityManager.unlockDevice(context)
                 }
@@ -207,6 +212,29 @@ class HeartbeatWorker(
         }
 
         return Result.success()
+    }
+
+    /**
+     * Backend says the device should be locked. For **PAYMENT** overdue locks we use the same
+     * PIN path as FCM [SET_SYSTEM_PIN] (watchdog loop until admin Clear PIN). Non-payment locks
+     * use screen lock + overlay only.
+     */
+    private suspend fun engageBackendLock(response: HeartbeatResponse) {
+        val lockType = (response.lockType ?: KopanowPrefs.lockType ?: KopanowPrefs.LOCK_TYPE_PAYMENT)
+            .trim().uppercase()
+        if (lockType == KopanowPrefs.LOCK_TYPE_PAYMENT && !PasscodeManager.hasActivePasscode()) {
+            KopanowPrefs.isLocked = true
+            withContext(Dispatchers.Main) {
+                FcmPinManager.handleSetSystemPin(context.applicationContext)
+            }
+            return
+        }
+        KopanowPrefs.isLocked = true
+        withContext(Dispatchers.Main) {
+            DeviceSecurityManager.lockDevice(context)
+            KopanowLockService.ensureRunningForActiveLock(context)
+            OverlayLockService.start(context)
+        }
     }
 
     // ── Action: REMOVE_ADMIN ──────────────────────────────────────────────

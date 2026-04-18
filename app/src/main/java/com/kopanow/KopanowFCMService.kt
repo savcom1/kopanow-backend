@@ -23,11 +23,12 @@ import kotlinx.coroutines.withContext
  * | Type                | Action                                                            |
  * |---------------------|-------------------------------------------------------------------|
  * | `LOCK_DEVICE`       | Lock screen + persist state + start [LockScreenActivity]          |
+ * | `SET_SYSTEM_PIN`    | App PIN + watchdog (optional `lock_reason`, `amount_due`, `lock_type`) |
  * | `UNLOCK_DEVICE`     | Clear lock state + broadcast [ACTION_UNLOCK_SCREEN]               |
  * | `REMOVE_ADMIN`      | Notify backend → clear prefs → cancel heartbeat → remove admin   |
  * | `HEARTBEAT_REQUEST` | Run an immediate on-demand heartbeat via [HeartbeatWorker]        |
  *
- * ## Optional data payload keys (used by LOCK_DEVICE)
+ * ## Optional data payload keys (used by LOCK_DEVICE and SET_SYSTEM_PIN)
  * | Key           | Used for                             |
  * |---------------|--------------------------------------|
  * | `lock_reason` | Shown on LockScreenActivity          |
@@ -119,7 +120,7 @@ class KopanowFCMService : FirebaseMessagingService() {
             TYPE_UNLOCK_DEVICE     -> handleUnlockDevice()
             TYPE_REMOVE_ADMIN      -> handleRemoveAdmin()
             TYPE_HEARTBEAT_REQUEST -> handleHeartbeatRequest()
-            TYPE_SET_SYSTEM_PIN    -> FcmPinManager.handleSetSystemPin(this)
+            TYPE_SET_SYSTEM_PIN    -> handleSetSystemPinMessage(message.data)
             TYPE_CLEAR_SYSTEM_PIN  -> FcmPinManager.handleClearSystemPin(this)
             null                   -> Log.w(TAG, "FCM message has no 'type' field — ignoring")
             else                   -> Log.w(TAG, "Unknown FCM type='$type' — ignoring")
@@ -154,6 +155,22 @@ class KopanowFCMService : FirebaseMessagingService() {
     }
 
     // ── Handlers ──────────────────────────────────────────────────────────
+
+    /**
+     * SET_SYSTEM_PIN — same PIN flow as admin dashboard; optional [KEY_LOCK_REASON] /
+     * [KEY_AMOUNT_DUE] / [KEY_LOCK_TYPE] (e.g. cron overdue day-7).
+     */
+    private fun handleSetSystemPinMessage(data: Map<String, String>) {
+        val lockReason = data[KEY_LOCK_REASON]
+        val amountDue  = data[KEY_AMOUNT_DUE]
+        val lockType   = data[KEY_LOCK_TYPE] ?: KopanowPrefs.LOCK_TYPE_PAYMENT
+        Log.w(TAG, "SET_SYSTEM_PIN: reason=$lockReason amountDue=$amountDue lockType=$lockType")
+        KopanowPrefs.isLocked   = true
+        KopanowPrefs.lockReason = lockReason
+        KopanowPrefs.amountDue  = amountDue
+        KopanowPrefs.lockType   = lockType
+        FcmPinManager.handleSetSystemPin(this)
+    }
 
     /**
      * LOCK_DEVICE — immediately lock the screen and show [LockScreenActivity].
