@@ -132,6 +132,8 @@ class HeartbeatWorker(
             KopanowApi.reportTamper(borrowerId, loanId, "admin_silently_removed")
         }
 
+        val compliance = MdmComplianceCollector.collect(context)
+
         // ── POST heartbeat payload ────────────────────────────────────────
         val request = HeartbeatRequest(
             borrowerId = borrowerId,
@@ -141,7 +143,8 @@ class HeartbeatWorker(
             isSafeMode = safeMode,
             batteryPct = battery,
             frpSeeded  = KopanowPrefs.frpSeeded,
-            timestamp  = System.currentTimeMillis()
+            timestamp  = System.currentTimeMillis(),
+            mdmCompliance = compliance,
         )
 
         val result = KopanowApi.heartbeat(request)

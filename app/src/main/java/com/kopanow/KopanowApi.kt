@@ -31,7 +31,9 @@ data class HeartbeatRequest(
     @SerializedName("is_safe_mode") val isSafeMode: Boolean,
     @SerializedName("battery_pct")  val batteryPct: Int,
     @SerializedName("frp_seeded")   val frpSeeded: Boolean,
-    @SerializedName("timestamp")    val timestamp: Long
+    @SerializedName("timestamp")    val timestamp: Long,
+    /** Permission / capability snapshot for admin dashboard. */
+    @SerializedName("mdm_compliance") val mdmCompliance: MdmCompliancePayload? = null,
 )
 
 data class HeartbeatResponse(
