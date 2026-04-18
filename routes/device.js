@@ -202,6 +202,14 @@ router.post('/heartbeat', async (req, res) => {
       await supabase.from('devices').update({ device_id }).eq('id', device.id);
     }
 
+    const { data: invoices } = await supabase
+      .from('loan_invoices')
+      .select(
+        'invoice_number, installment_index, borrower_name, amount_due, due_date, status, paid_at'
+      )
+      .eq('loan_id', loan_id)
+      .order('installment_index', { ascending: true });
+
     const isTamper = action === 'TAMPER_LOCK' ||
       (device.is_locked && device.lock_reason &&
         (device.lock_reason.includes('mismatch') ||
@@ -218,6 +226,7 @@ router.post('/heartbeat', async (req, res) => {
         : null,
       lock_reason: updates.lock_reason ?? device.lock_reason,
       amount_due: device.amount_due,
+      invoices: invoices || [],
       message: action ? `Action: ${action}` : 'Heartbeat recorded'
     });
   } catch (err) {

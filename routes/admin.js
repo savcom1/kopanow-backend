@@ -11,6 +11,21 @@ function daysOverdue(nextDueDate) {
   return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
 }
 
+/** Roll up loan_invoices rows for list views (counts + next unpaid due). */
+function summarizeInvoiceRows(rows) {
+  if (!rows?.length) return null;
+  const counts = { pending: 0, paid: 0, overdue: 0 };
+  for (const r of rows) {
+    if (counts[r.status] != null) counts[r.status]++;
+  }
+  const nextUnpaid = rows.find((i) => i.status === 'pending' || i.status === 'overdue');
+  return {
+    ...counts,
+    total: rows.length,
+    next_due_date: nextUnpaid?.due_date || null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/devices
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,7 +50,7 @@ router.get('/devices', async (req, res) => {
 
     if (error) throw error;
 
-    // Join loan data
+    // Join loan data + per-loan invoice summary (status counts)
     const loanIds = [...new Set(devices.map(d => d.loan_id))];
     let loanMap = {};
     if (loanIds.length) {
@@ -43,13 +58,27 @@ router.get('/devices', async (req, res) => {
       loanMap = Object.fromEntries((loans || []).map(l => [l.loan_id, l]));
     }
 
+    let invByLoan = {};
+    if (loanIds.length) {
+      const { data: invRows } = await supabase
+        .from('loan_invoices')
+        .select('loan_id, status, due_date')
+        .in('loan_id', loanIds);
+      for (const r of invRows || []) {
+        if (!invByLoan[r.loan_id]) invByLoan[r.loan_id] = [];
+        invByLoan[r.loan_id].push(r);
+      }
+    }
+
     const enriched = devices.map(d => ({
       ...d,
-      loan: loanMap[d.loan_id] ? {
-        outstanding_amount: loanMap[d.loan_id].outstanding_amount,
-        next_due_date:      loanMap[d.loan_id].next_due_date,
-        days_overdue:       daysOverdue(loanMap[d.loan_id].next_due_date)
-      } : null
+      loan: loanMap[d.loan_id]
+        ? {
+            ...loanMap[d.loan_id],
+            days_overdue: daysOverdue(loanMap[d.loan_id].next_due_date),
+            invoice_summary: summarizeInvoiceRows(invByLoan[d.loan_id] || []),
+          }
+        : null,
     }));
 
     // KPI summary
@@ -73,14 +102,32 @@ router.get('/devices/:id', async (req, res) => {
     if (error) throw error;
     if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
 
-    const [{ data: loan }, { data: tamperLogs }] = await Promise.all([
+    const [
+      { data: loan },
+      { data: tamperLogs },
+      { data: registration },
+      { data: invoices },
+    ] = await Promise.all([
       supabase.from('loans').select('*').eq('loan_id', device.loan_id).maybeSingle(),
       supabase.from('tamper_logs').select('*')
         .eq('borrower_id', device.borrower_id).eq('loan_id', device.loan_id)
-        .order('created_at', { ascending: false }).limit(20)
+        .order('created_at', { ascending: false }).limit(20),
+      supabase.from('registrations').select('*').eq('borrower_id', device.borrower_id).maybeSingle(),
+      supabase.from('loan_invoices').select('*').eq('loan_id', device.loan_id)
+        .order('installment_index', { ascending: true }),
     ]);
 
-    return res.json({ success: true, device, loan, tamperLogs });
+    const invoice_summary = summarizeInvoiceRows(invoices || []);
+
+    return res.json({
+      success: true,
+      device,
+      loan,
+      registration: registration || null,
+      invoices: invoices || [],
+      invoice_summary,
+      tamperLogs,
+    });
   } catch (err) {
     console.error('[admin:device-detail]', err.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
@@ -129,11 +176,66 @@ router.get('/loans', async (req, res) => {
       .range(from, to);
 
     if (error) throw error;
-    return res.json({ success: true, loans: (loans || []).map(l => ({
-      ...l, days_overdue: daysOverdue(l.next_due_date)
-    })), total: count || 0, page: parseInt(page) });
+
+    const loanIdList = (loans || []).map(l => l.loan_id);
+    let invByLoan = {};
+    if (loanIdList.length) {
+      const { data: invRows } = await supabase
+        .from('loan_invoices')
+        .select('loan_id, status, due_date')
+        .in('loan_id', loanIdList);
+      for (const r of invRows || []) {
+        if (!invByLoan[r.loan_id]) invByLoan[r.loan_id] = [];
+        invByLoan[r.loan_id].push(r);
+      }
+    }
+
+    return res.json({
+      success: true,
+      loans: (loans || []).map((l) => ({
+        ...l,
+        days_overdue: daysOverdue(l.next_due_date),
+        invoice_summary: summarizeInvoiceRows(invByLoan[l.loan_id] || []),
+      })),
+      total: count || 0,
+      page: parseInt(page),
+    });
   } catch (err) {
     console.error('[admin:loans]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/loans/:loanId/invoices
+// Full installment list + registration snippet (for admin tools / refresh).
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/loans/:loanId/invoices', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const { data: loan, error: loanErr } = await supabase
+      .from('loans')
+      .select('loan_id, borrower_id, principal_amount, outstanding_amount, installment_weeks, total_repayment_amount, weekly_installment_amount, loan_schedule_start, next_due_date')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (loanErr) throw loanErr;
+    if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    const [{ data: invoices, error: invErr }, { data: registration }] = await Promise.all([
+      supabase.from('loan_invoices').select('*').eq('loan_id', loanId).order('installment_index', { ascending: true }),
+      supabase.from('registrations').select('full_name, phone, national_id, region, address').eq('borrower_id', loan.borrower_id).maybeSingle(),
+    ]);
+    if (invErr) throw invErr;
+
+    return res.json({
+      success: true,
+      loan,
+      registration: registration || null,
+      invoices: invoices || [],
+      invoice_summary: summarizeInvoiceRows(invoices || []),
+    });
+  } catch (err) {
+    console.error('[admin:loan-invoices]', err.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -191,7 +293,14 @@ router.post('/command', async (req, res) => {
         break;
       case 'REMOVE_ADMIN':
         fcmResult   = await sendRemoveAdminCommand(device.fcm_token);
-        deviceUpdate = { is_locked: false, status: 'admin_removed' };
+        deviceUpdate = {
+          is_locked:       false,
+          lock_reason:     null,
+          amount_due:      null,
+          lock_type:       'PAYMENT',
+          passcode_active: false,
+          status:          'admin_removed'
+        };
         loanUpdate   = { device_status: 'admin_removed' };
         logType      = EVENT_TYPES.ADMIN_REMOVAL_SENT;
         break;

@@ -6,7 +6,7 @@ CANONICAL (new project or full reset)
   Run:  db/schema.sql  (single paste in Supabase SQL Editor)
 
   This creates or aligns:
-    registrations, loans, devices, loan_requests, payment_references,
+    registrations, loans, loan_invoices, devices, loan_requests, payment_references,
     payments, tamper_logs, notifications_log
 
   Column-level parity with Node routes under routes/ and helpers/.
@@ -20,6 +20,7 @@ INCREMENTAL (existing database created before 2026 consolidation)
     migrations/create_payment_references.sql
     migrations/add_passcode_columns.sql
     migrations/add_system_pin_column.sql
+    migrations/loan_invoices_and_schedule.sql
 
   These use IF NOT EXISTS / ADD COLUMN IF NOT EXISTS where possible.
   Safe to run after db/schema.sql (no-op if already applied).

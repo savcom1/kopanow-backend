@@ -4,6 +4,7 @@ const supabase = require('../helpers/supabase');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendHeartbeatRequest } = require('../helpers/fcm');
 const { notify, EVENT } = require('../helpers/notify');
+const { markOverdueInvoices } = require('../helpers/loanInvoices');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -35,6 +36,16 @@ async function getPhone(borrowerId, fallbackPhone) {
 // Sends friendly reminders BEFORE the payment falls due so borrowers have
 // time to arrange funds. Stages: -3d, -1d, 0d (due today).
 // ─────────────────────────────────────────────────────────────────────────────
+async function runInvoiceOverdueSweep() {
+  console.log('[cron:invoice-overdue] Marking unpaid past-due invoices…');
+  try {
+    await markOverdueInvoices();
+    console.log('[cron:invoice-overdue] Done');
+  } catch (err) {
+    console.error('[cron:invoice-overdue] Error:', err.message);
+  }
+}
+
 async function runPreDueReminders() {
   console.log('[cron:pre-due] Starting pre-due reminder sweep…');
   try {
@@ -347,6 +358,10 @@ async function runHeartbeatMonitor() {
 // Schedule and export
 // ─────────────────────────────────────────────────────────────────────────────
 function startPaymentScheduler() {
+  // 07:30 EAT — mark loan_invoices overdue before reminder sweep
+  cron.schedule('30 4 * * *', runInvoiceOverdueSweep, { timezone: 'Africa/Nairobi' });
+  console.log('[cron] Invoice overdue sweep scheduled: daily at 07:30 EAT');
+
   // 08:00 EAT daily — pre-due reminders (EAT = UTC+3, so 05:00 UTC)
   cron.schedule('0 5 * * *', runPreDueReminders, { timezone: 'Africa/Nairobi' });
   console.log('[cron] Pre-due reminders scheduled: daily at 08:00 EAT');
@@ -365,6 +380,7 @@ function startPaymentScheduler() {
 
 module.exports = {
   startPaymentScheduler,
+  runInvoiceOverdueSweep,
   runPreDueReminders,
   runOverdueEscalation,
   runHeartbeatMonitor,

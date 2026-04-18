@@ -4,6 +4,10 @@ const router   = express.Router();
 const supabase = require('../helpers/supabase');
 const { sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
+const {
+  applyPaymentToInvoices,
+  refreshLoanNextDueDate,
+} = require('../helpers/loanInvoices');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/payment/submit
@@ -185,6 +189,10 @@ router.post('/verify/:id', async (req, res) => {
       is_processed: true,
       raw_callback: { source: 'manual_reference', verified_by: verified_by || 'admin' }
     }, { onConflict: 'mpesa_ref' });
+
+    // Mark matching weekly invoices as paid (oldest first)
+    await applyPaymentToInvoices(ref.loan_id, paid);
+    await refreshLoanNextDueDate(ref.loan_id);
 
     // Update loan outstanding
     if (loan) {

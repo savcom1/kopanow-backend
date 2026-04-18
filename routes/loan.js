@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const supabase = require('../helpers/supabase');
 const { assertDeviceFreeForEnrollment } = require('../helpers/deviceEnrollment');
+const { createInvoicesForLoan } = require('../helpers/loanInvoices');
 
 function generateLoanId() {
   // Human-readable-ish unique loan id
@@ -20,6 +21,10 @@ router.post('/request', async (req, res) => {
       region,
       address,
       amount_tzs,
+      /** Total to repay (principal + fees). Default: 125% of principal if omitted. */
+      total_repayment_tzs,
+      /** Weekly installments count (default 5 → due days 7,14,21,28,35). */
+      installment_weeks,
       tenor_days,
       purpose,
       device_id,
@@ -42,6 +47,13 @@ router.post('/request', async (req, res) => {
     }
 
     const loan_id = generateLoanId();
+
+    const principal = Number(amount_tzs);
+    const weeks = installment_weeks != null ? parseInt(installment_weeks, 10) : 5;
+    const totalRepayment =
+      total_repayment_tzs != null && total_repayment_tzs !== ''
+        ? Number(total_repayment_tzs)
+        : Math.round(principal * 1.25);
 
     if (device_id && String(device_id).trim()) {
       const enr = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
@@ -85,13 +97,25 @@ router.post('/request', async (req, res) => {
       .insert({
         loan_id,
         borrower_id,
-        principal_amount: amount_tzs,
-        outstanding_amount: amount_tzs,
+        principal_amount: principal,
+        outstanding_amount: totalRepayment,
+        interest_amount: Math.max(0, totalRepayment - principal),
         device_status: 'unregistered',
         created_at: now,
-        updated_at: now
+        updated_at: now,
       })
       .throwOnError();
+
+    // 3b) Weekly installment invoices (fixed total, equal weekly amounts)
+    await createInvoicesForLoan({
+      loan_id,
+      borrower_id,
+      borrower_name: full_name,
+      principal_amount: principal,
+      weeks,
+      total_repayment: totalRepayment,
+      schedule_start: now,
+    });
 
     // 4) Pre-create / update devices row so admin UI lists the handset with device_id
     //    before MDM enrollment (dpc_active = false until /api/device/register).

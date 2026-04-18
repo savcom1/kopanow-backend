@@ -62,7 +62,12 @@ CREATE TABLE IF NOT EXISTS loans (
   guarantors         JSONB       NOT NULL DEFAULT '[]',
 
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  installment_weeks          INTEGER     NOT NULL DEFAULT 5,
+  total_repayment_amount     NUMERIC,
+  weekly_installment_amount  NUMERIC,
+  loan_schedule_start        TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_loans_next_due_date ON loans (next_due_date);
@@ -143,6 +148,34 @@ CREATE TABLE IF NOT EXISTS loan_requests (
 
 CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower ON loan_requests (borrower_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_loan_requests_loan_id ON loan_requests (loan_id);
+
+
+-- ── Loan invoices (weekly installments) ─────────────────────
+CREATE TABLE IF NOT EXISTS loan_invoices (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_id           TEXT NOT NULL,
+  borrower_id       TEXT NOT NULL,
+  invoice_number    TEXT NOT NULL UNIQUE,
+  installment_index INTEGER NOT NULL,
+  borrower_name     TEXT,
+  amount_due        NUMERIC NOT NULL,
+  due_date          TIMESTAMPTZ NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'paid', 'overdue')),
+  paid_at           TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_loan_invoices_loan_due
+  ON loan_invoices (loan_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_loan_invoices_status
+  ON loan_invoices (status, due_date);
+
+DROP TRIGGER IF EXISTS trg_loan_invoices_updated_at ON loan_invoices;
+CREATE TRIGGER trg_loan_invoices_updated_at
+  BEFORE UPDATE ON loan_invoices
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
 -- ── Payment references (borrower-submitted M-Pesa refs) ───

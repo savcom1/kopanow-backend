@@ -75,6 +75,39 @@ function fmtDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-TZ', { day:'numeric', month:'short', year:'numeric' });
 }
 
+function esc(s) {
+  if (s == null || s === '') return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Renders invoice_summary from API (pending / paid / overdue counts). */
+function formatInvoiceSummaryHtml(s) {
+  if (!s || !s.total) return '<span class="text-muted">—</span>';
+  const bits = [];
+  if (s.paid) bits.push(`<span style="color:var(--green)">${s.paid} paid</span>`);
+  if (s.pending) bits.push(`<span style="color:var(--amber)">${s.pending} pend</span>`);
+  if (s.overdue) bits.push(`<span style="color:var(--red)">${s.overdue} late</span>`);
+  return bits.length ? bits.join(' <span class="text-muted">·</span> ') : '<span class="text-muted">—</span>';
+}
+
+function invoiceStatusBadge(status) {
+  const map = {
+    pending: '<span class="status-badge s-registered">Pending</span>',
+    paid:    '<span class="status-badge s-active">Paid</span>',
+    overdue: '<span class="status-badge s-locked">Overdue</span>'
+  };
+  return map[status] || esc(status);
+}
+
+function daysOverdueClient(nextDueDate) {
+  if (!nextDueDate) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
+}
+
 function statusBadge(status) {
   const labels = {
     active: 'Active', locked: 'Locked', registered: 'Registered',
@@ -146,6 +179,7 @@ async function loadDashboard() {
       <td>${statusBadge(d.status)}</td>
       <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New — no heartbeat yet</span>'}</td>
       <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
+      <td style="font-size:11px;max-width:120px">${d.loan ? formatInvoiceSummaryHtml(d.loan.invoice_summary) : '—'}</td>
       <td>
         <div class="action-group">
           ${d.status !== 'locked'
@@ -166,7 +200,7 @@ async function loadDevices() {
 
   const tbody = $('#devices-tbody');
   if (!data.devices?.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
     return;
   }
 
@@ -193,6 +227,7 @@ async function loadDevices() {
       <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New</span>'}</td>
       <td>${d.loan?.days_overdue > 0 ? `<span style="color:var(--red)">${d.loan.days_overdue}d</span>` : '—'}</td>
       <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
+      <td style="font-size:12px;max-width:140px">${d.loan ? formatInvoiceSummaryHtml(d.loan.invoice_summary) : '—'}</td>
       <td>
         <div class="action-group">
           ${d.status !== 'locked'
@@ -244,16 +279,26 @@ async function loadLoans() {
   const data = await apiFetch(`${API}/loans?limit=100`);
   if (!data.success) return;
   const tbody = $('#loans-tbody');
-  tbody.innerHTML = data.loans.map(l => `
+  tbody.innerHTML = data.loans.map(l => {
+    const totalR = l.total_repayment_amount != null ? Number(l.total_repayment_amount) : null;
+    const weekly = l.weekly_installment_amount != null ? Number(l.weekly_installment_amount) : null;
+    const wk = l.installment_weeks || '—';
+    const tw = totalR != null && weekly != null
+      ? `TZS ${totalR.toLocaleString()} <span class="text-muted">/</span> ${wk}× TZS ${weekly.toLocaleString()}`
+      : '—';
+    return `
     <tr>
-      <td class="mono">${l.loan_id}</td>
-      <td>${l.borrower_id}</td>
-      <td>TZS ${Number(l.principal_amount).toLocaleString()}</td>
-      <td><strong>TZS ${Number(l.outstanding_amount).toLocaleString()}</strong></td>
+      <td class="mono">${esc(l.loan_id)}</td>
+      <td>${esc(l.borrower_id)}</td>
+      <td>TZS ${Number(l.principal_amount || 0).toLocaleString()}</td>
+      <td style="font-size:12px">${tw}</td>
+      <td><strong>TZS ${Number(l.outstanding_amount || 0).toLocaleString()}</strong></td>
       <td>${fmtDate(l.next_due_date)}</td>
-      <td>${l.days_overdue > 0 ? `<span style="color:var(--red)">${l.days_overdue} days</span>` : '<span style="color:var(--green)">Current</span>'}</td>
+      <td>${l.days_overdue > 0 ? `<span style="color:var(--red)">${l.days_overdue}d</span>` : '<span style="color:var(--green)">OK</span>'}</td>
+      <td style="font-size:12px">${formatInvoiceSummaryHtml(l.invoice_summary)}</td>
       <td>${statusBadge(l.device_status)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 async function openModal(mongoId) {
@@ -270,28 +315,94 @@ async function openModal(mongoId) {
 
   const d = data.device;
   const l = data.loan;
-  $('#modal-title').textContent = `${d.borrower_id} — ${d.loan_id}`;
+  const reg = data.registration;
+  const invoices = data.invoices || [];
+  const invSum = data.invoice_summary;
+
+  $('#modal-title').textContent = `${esc(d.borrower_id)} — ${esc(d.loan_id)}`;
+
+  let html = '';
+
+  if (reg) {
+    html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Customer (registration)</div>`;
+    html += [
+      ['Full name', esc(reg.full_name)],
+      ['Phone', esc(reg.phone)],
+      ['National ID', esc(reg.national_id)],
+      ['Region', esc(reg.region)],
+      ['Address', esc(reg.address)],
+    ].map(([a, b]) => `
+      <div class="detail-row">
+        <span class="detail-label">${a}</span>
+        <span class="detail-value">${b || '—'}</span>
+      </div>`).join('');
+    html += '<div style="height:14px"></div>';
+  }
+
+  if (l) {
+    html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Loan & repayment schedule</div>`;
+    const loanRows = [
+      ['Principal', `TZS ${Number(l.principal_amount || 0).toLocaleString()}`],
+      ['Total repayment (fixed)', l.total_repayment_amount != null ? `TZS ${Number(l.total_repayment_amount).toLocaleString()}` : '—'],
+      ['Weekly installment', l.weekly_installment_amount != null ? `TZS ${Number(l.weekly_installment_amount).toLocaleString()}` : '—'],
+      ['Installment weeks', l.installment_weeks != null ? String(l.installment_weeks) : '—'],
+      ['Schedule start', l.loan_schedule_start ? fmtDate(l.loan_schedule_start) : '—'],
+      ['Outstanding', `<strong>TZS ${Number(l.outstanding_amount || 0).toLocaleString()}</strong>`],
+      ['Next due date', fmtDate(l.next_due_date)],
+      ['Calendar days overdue', l.next_due_date ? (daysOverdueClient(l.next_due_date) ? `<span style="color:var(--red)">${daysOverdueClient(l.next_due_date)} days</span>` : '<span style="color:var(--green)">0</span>') : '—'],
+    ];
+    if (invSum && invSum.total) {
+      loanRows.push(['Installment status', formatInvoiceSummaryHtml(invSum)]);
+    }
+    html += loanRows.map(([a, b]) => `
+      <div class="detail-row">
+        <span class="detail-label">${a}</span>
+        <span class="detail-value">${b}</span>
+      </div>`).join('');
+    html += '<div style="height:14px"></div>';
+  }
+
+  if (invoices.length) {
+    html += `<div style="margin:0 0 8px;font-weight:600;font-size:13px;color:var(--text-secondary)">Invoices (${invoices.length})</div>`;
+    html += `<div style="overflow:auto;max-height:260px;border:1px solid var(--border);border-radius:8px;margin-bottom:14px">
+      <table class="data-table" style="font-size:12px;margin:0;width:100%">
+        <thead><tr>
+          <th>#</th><th>Invoice #</th><th>Amount</th><th>Due</th><th>Status</th><th>Paid at</th>
+        </tr></thead><tbody>`;
+    html += invoices.map((row) => `
+        <tr>
+          <td>${row.installment_index}</td>
+          <td class="mono">${esc(row.invoice_number)}</td>
+          <td>TZS ${Number(row.amount_due).toLocaleString()}</td>
+          <td>${fmtDate(row.due_date)}</td>
+          <td>${invoiceStatusBadge(row.status)}</td>
+          <td class="text-muted">${row.paid_at ? fmtDate(row.paid_at) : '—'}</td>
+        </tr>`).join('');
+    html += '</tbody></table></div>';
+  }
+
+  html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Device & lock state</div>`;
 
   const fields = [
-    ['Borrower ID',    d.borrower_id],
-    ['Loan ID',        d.loan_id],
-    ['Device ID',      d.device_id || '—'],
-    ['Model',          d.device_model || '—'],
+    ['Borrower ID', esc(d.borrower_id)],
+    ['Loan ID', esc(d.loan_id)],
+    ['Device ID', esc(d.device_id) || '—'],
+    ['Model', esc(d.device_model) || '—'],
   ];
 
   const di = d.device_info;
   if (di && typeof di === 'object') {
-    if (di.manufacturer) fields.push(['Manufacturer', di.manufacturer]);
-    if (di.brand)        fields.push(['Brand', di.brand]);
-    if (di.android_version) fields.push(['Android', di.android_version]);
+    if (di.manufacturer) fields.push(['Manufacturer', esc(di.manufacturer)]);
+    if (di.brand) fields.push(['Brand', esc(di.brand)]);
+    if (di.android_version) fields.push(['Android', esc(di.android_version)]);
     if (di.sdk_version != null) fields.push(['API level', String(di.sdk_version)]);
     if (di.screen_width_dp != null && di.screen_height_dp != null) {
       fields.push(['Screen (dp)', `${di.screen_width_dp} × ${di.screen_height_dp}`]);
     }
     if (di.screen_density) fields.push(['Density (dpi)', String(di.screen_density)]);
     if (di.battery_pct != null) fields.push(['Battery (%)', String(di.battery_pct)]);
-    if (di.build_product) fields.push(['Build product', di.build_product]);
-    if (di.build_device)  fields.push(['Build device', di.build_device]);
+    if (di.build_product) fields.push(['Build product', esc(di.build_product)]);
+    if (di.build_device) fields.push(['Build device', esc(di.build_device)]);
     if (di.is_rooted === true) fields.push(['Rooted', '<span style="color:var(--red)">Yes</span>']);
     if (di.source === 'loan_registration') fields.push(['Profile source', 'Loan application']);
     if (di.registered_at) fields.push(['Registered at', fmtDate(di.registered_at)]);
@@ -299,25 +410,24 @@ async function openModal(mongoId) {
   }
 
   fields.push(
-    ['Connectivity',   connectivityBadge(isOnline(d.last_seen))],
-    ['Status',         statusBadge(d.status)],
-    ['Locked',         d.is_locked ? '🔒 Yes' : '🔓 No'],
-    ['Passcode Active',d.passcode_active
-                         ? '<span style="color:#f0a500;font-weight:600">🔑 Yes</span>'
-                         : '<span style="color:#888">No</span>'],
-    ['Lock Reason',    d.lock_reason || '—'],
-    ['Amount Due',     d.amount_due || '—'],
-    ['Last Seen',      timeAgo(d.last_seen)],
-    ['Outstanding',    l ? `TZS ${Number(l.outstanding_amount).toLocaleString()}` : '—'],
-    ['Next Due',       l ? fmtDate(l.next_due_date) : '—'],
+    ['Connectivity', connectivityBadge(isOnline(d.last_seen))],
+    ['Status', statusBadge(d.status)],
+    ['Locked', d.is_locked ? '🔒 Yes' : '🔓 No'],
+    ['Passcode Active', d.passcode_active
+      ? '<span style="color:#f0a500;font-weight:600">🔑 Yes</span>'
+      : '<span style="color:#888">No</span>'],
+    ['Lock Reason', esc(d.lock_reason) || '—'],
+    ['Amount Due', esc(d.amount_due) || '—'],
+    ['Last Seen', timeAgo(d.last_seen)],
   );
 
-  $('#modal-body').innerHTML = fields.map(([label, val]) => `
+  html += fields.map(([label, val]) => `
     <div class="detail-row">
       <span class="detail-label">${label}</span>
       <span class="detail-value">${val}</span>
     </div>`).join('');
 
+  $('#modal-body').innerHTML = html;
   $('#cmd-lock-reason').value = d.lock_reason || '';
 }
 
