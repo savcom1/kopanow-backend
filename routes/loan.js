@@ -2,7 +2,11 @@
 const router = require('express').Router();
 const supabase = require('../helpers/supabase');
 const { assertDeviceFreeForEnrollment } = require('../helpers/deviceEnrollment');
-const { createInvoicesForLoan } = require('../helpers/loanInvoices');
+const {
+  parseRepaymentMonths,
+  computeRepaymentSchedule,
+  createInvoicesForLoan,
+} = require('../helpers/loanInvoices');
 
 function generateLoanId() {
   // Human-readable-ish unique loan id
@@ -21,9 +25,9 @@ router.post('/request', async (req, res) => {
       region,
       address,
       amount_tzs,
-      /** Total to repay (principal + fees). Default: 125% of principal if omitted. */
-      total_repayment_tzs,
-      /** Weekly installments count (default 5 → due days 7,14,21,28,35). */
+      /** 1–3: total = principal×(120%/140%/160%); weekly = total÷(4×months). */
+      repayment_months,
+      /** Legacy: 4, 8, or 12 weeks if months not sent. */
       installment_weeks,
       tenor_days,
       purpose,
@@ -42,18 +46,29 @@ router.post('/request', async (req, res) => {
       is_rooted
     } = req.body || {};
 
-    if (!borrower_id || !phone || !full_name || !national_id || !region || !address || !amount_tzs || !tenor_days || !purpose) {
+    if (!borrower_id || !phone || !full_name || !national_id || !region || !address || !amount_tzs || !purpose) {
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
+    }
+    const rmQuick = repayment_months != null ? parseInt(repayment_months, 10) : NaN;
+    const hasTerm =
+      (tenor_days != null && Number(tenor_days) > 0) ||
+      (Number.isFinite(rmQuick) && rmQuick >= 1 && rmQuick <= 3);
+    if (!hasTerm) {
+      return res.status(400).json({ success: false, message: 'Provide tenor_days or repayment_months (1–3).' });
     }
 
     const loan_id = generateLoanId();
 
     const principal = Number(amount_tzs);
-    const weeks = installment_weeks != null ? parseInt(installment_weeks, 10) : 5;
-    const totalRepayment =
-      total_repayment_tzs != null && total_repayment_tzs !== ''
-        ? Number(total_repayment_tzs)
-        : Math.round(principal * 1.25);
+    const months = parseRepaymentMonths({
+      repayment_months,
+      installment_weeks,
+      tenor_days,
+    });
+    const schedule = computeRepaymentSchedule(principal, months);
+    const totalRepayment = schedule.totalRepayment;
+    const interestAmount = schedule.interest_amount;
+    const tenorDaysStored = Math.round(30 * months);
 
     if (device_id && String(device_id).trim()) {
       const enr = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
@@ -84,7 +99,7 @@ router.post('/request', async (req, res) => {
         borrower_id,
         loan_id,
         amount_tzs,
-        tenor_days,
+        tenor_days: tenorDaysStored,
         purpose,
         status: 'submitted'
       });
@@ -99,21 +114,20 @@ router.post('/request', async (req, res) => {
         borrower_id,
         principal_amount: principal,
         outstanding_amount: totalRepayment,
-        interest_amount: Math.max(0, totalRepayment - principal),
+        interest_amount: interestAmount,
         device_status: 'unregistered',
         created_at: now,
         updated_at: now,
       })
       .throwOnError();
 
-    // 3b) Weekly installment invoices (fixed total, equal weekly amounts)
+    // 3b) Weekly installments: total = principal × 120%/140%/160%, ÷ (4×months) weeks
     await createInvoicesForLoan({
       loan_id,
       borrower_id,
       borrower_name: full_name,
       principal_amount: principal,
-      weeks,
-      total_repayment: totalRepayment,
+      repayment_months: months,
       schedule_start: now,
     });
 

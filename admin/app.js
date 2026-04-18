@@ -409,9 +409,11 @@ async function openModal(mongoId) {
     html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Loan & repayment schedule</div>`;
     const loanRows = [
       ['Principal', `TZS ${Number(l.principal_amount || 0).toLocaleString()}`],
+      ['Interest (defined)', l.interest_amount != null ? `TZS ${Number(l.interest_amount).toLocaleString()} <span class="text-muted" style="font-size:11px">(total − principal; total = 120%/140%/160% of principal)</span>` : '—'],
       ['Total repayment (fixed)', l.total_repayment_amount != null ? `TZS ${Number(l.total_repayment_amount).toLocaleString()}` : '—'],
       ['Weekly installment', l.weekly_installment_amount != null ? `TZS ${Number(l.weekly_installment_amount).toLocaleString()}` : '—'],
       ['Installment weeks', l.installment_weeks != null ? String(l.installment_weeks) : '—'],
+      ['Schedule rule', 'Total = principal × (120% / 140% / 160%) for 1–3 mo; weekly = total ÷ (4 × months)'],
       ['Schedule start', l.loan_schedule_start ? fmtDate(l.loan_schedule_start) : '—'],
       ['Outstanding', `<strong>TZS ${Number(l.outstanding_amount || 0).toLocaleString()}</strong>`],
       ['Next due date', fmtDate(l.next_due_date)],
