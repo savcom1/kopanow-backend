@@ -40,7 +40,7 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         KopanowPrefs.init(context.applicationContext)
         triggerTamperLock(context)
         enqueueTamperReport(context, "admin_disable_requested")
-        return "SECURITY ALERT: This device is now locked. Your attempt to disable protection has been logged and reported to Kopanow Security."
+        return context.getString(R.string.admin_disable_blocked_message)
     }
 
     override fun onEnabled(context: Context, intent: Intent) {
@@ -96,7 +96,7 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         KopanowPrefs.isLocked  = true
         KopanowPrefs.lockType  = KopanowPrefs.LOCK_TYPE_TAMPER   // tamper = admin-only clear via FCM
         if (KopanowPrefs.lockReason.isNullOrBlank()) {
-            KopanowPrefs.lockReason = "Security Alert: Unauthorized attempt to disable device protection."
+            KopanowPrefs.lockReason = context.getString(R.string.admin_tamper_default_lock_reason)
         }
 
         // 1. Immediate System Lock
@@ -127,7 +127,7 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("Security Violation")
-            .setContentText("Device is locked due to tampering.")
+            .setContentText(context.getString(R.string.admin_tamper_notification_text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(pendingIntent, true)

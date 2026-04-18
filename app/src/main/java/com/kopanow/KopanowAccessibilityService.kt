@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -26,6 +27,12 @@ import kotlinx.coroutines.launch
  */
 class KopanowAccessibilityService : AccessibilityService() {
 
+    @Volatile
+    private var lastTamperEngageElapsed: Long = 0L
+
+    @Volatile
+    private var lastFactoryContentScanElapsed: Long = 0L
+
     companion object {
         private const val TAG = "KopanowAccessibility"
 
@@ -38,8 +45,14 @@ class KopanowAccessibilityService : AccessibilityService() {
             "MasterClear",
             "MasterClearConfirm",
             "FactoryReset",
+            "FactoryResetProfile",
             "ResetDashboard",
+            "ResetSettings",
+            "BackupSettings",
             "EraseEverything",
+            "EraseSdCard",
+            "MainClear",
+            "PhoneResetSettings",
             "PrivacySettings",
             "DevelopmentSettings",
             "DevelopmentSettingsDashboard",
@@ -55,7 +68,6 @@ class KopanowAccessibilityService : AccessibilityService() {
             "DeviceAdmin",
         )
 
-        /** Shown on the system Device admin / administrators screen (AOSP + common OEM). */
         private val DEVICE_ADMIN_WINDOW_PHRASES = listOf(
             "Device admin apps",
             "Device administrators",
@@ -64,6 +76,27 @@ class KopanowAccessibilityService : AccessibilityService() {
             "Deactivate this device admin app",
             "Remove Kopanow",
         )
+
+        /** User opened factory reset / erase flow (often before tapping final reset). */
+        private val FACTORY_RESET_TEXT_PHRASES = listOf(
+            "Factory data reset",
+            "Factory reset",
+            "Erase all data",
+            "Erase all data (factory reset)",
+            "Delete all data",
+            "Reset phone",
+            "Reset device",
+            "Erase everything",
+            "Restore factory defaults",
+            "Reset all settings",
+            "Master reset",
+            "Wipe data",
+            "Futa data zote",
+            "Rejesha mipangilio ya kiwanda",
+            "Ripoti ya kiwanda",
+        )
+
+        private const val ENGAGE_DEBOUNCE_MS = 3_500L
 
         private val SETTINGS_PACKAGES = setOf(
             "com.android.settings",
@@ -109,22 +142,62 @@ class KopanowAccessibilityService : AccessibilityService() {
 
         val dangerousByClass = DANGEROUS_KEYWORDS.any { cls.contains(it, ignoreCase = true) }
         if (dangerousByClass) {
+            val factoryClassHit = listOf(
+                "MasterClear", "FactoryReset", "EraseEverything", "ResetDashboard",
+                "MainClear", "PhoneReset", "EraseSd", "BackupSettings", "ResetSettings"
+            ).any { cls.contains(it, ignoreCase = true) }
             Log.w(TAG, "⚠️ TAMPER (class): $pkg / $cls — ENGAGING LOCK")
-            engageTamperLock(reason = "Security Alert: Attempt to bypass device protection.")
+            engageTamperLock(
+                reason = if (factoryClassHit) {
+                    "Security Alert: Factory reset / erase device settings were opened."
+                } else {
+                    "Security Alert: Attempt to bypass device protection."
+                },
+                tamperEvent = if (factoryClassHit) "factory_reset_settings_access" else "settings_dangerous_screen_access"
+            )
             return
         }
 
-        // Many OEMs use a generic SubSettings activity; detect the Device admin screen by visible text.
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            looksLikeGenericSettingsContainer(cls)
-        ) {
+        // Generic SubSettings: factory reset / erase (often before user confirms reset) or device admin.
+        if (looksLikeGenericSettingsContainer(cls)) {
             val root = rootInActiveWindow
             if (root != null) {
                 try {
-                    if (treeContainsDeviceAdminPhrases(root)) {
-                        Log.w(TAG, "⚠️ TAMPER (text scan): $pkg / $cls — ENGAGING LOCK")
-                        engageTamperLock(reason = "Security Alert: Attempt to access device administrator settings.")
-                        return
+                    if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                        var engaged = false
+                        when {
+                            treeContainsFactoryResetPhrases(root) -> {
+                                Log.w(TAG, "⚠️ TAMPER (factory text): $pkg / $cls")
+                                engageTamperLock(
+                                    reason = "Security Alert: Factory reset / erase device screen was opened.",
+                                    tamperEvent = "factory_reset_settings_access"
+                                )
+                                engaged = true
+                            }
+                            treeContainsDeviceAdminPhrases(root) -> {
+                                Log.w(TAG, "⚠️ TAMPER (admin text): $pkg / $cls")
+                                engageTamperLock(
+                                    reason = "Security Alert: Attempt to access device administrator settings.",
+                                    tamperEvent = "settings_admin_screen_access"
+                                )
+                                engaged = true
+                            }
+                        }
+                        if (engaged) return
+                    } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                        // Some OEMs only populate reset wording after the first layout pass.
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastFactoryContentScanElapsed >= 2_000L &&
+                            treeContainsFactoryResetPhrases(root)
+                        ) {
+                            lastFactoryContentScanElapsed = now
+                            Log.w(TAG, "⚠️ TAMPER (factory content): $pkg / $cls")
+                            engageTamperLock(
+                                reason = "Security Alert: Factory reset / erase device screen was opened.",
+                                tamperEvent = "factory_reset_settings_access"
+                            )
+                            return
+                        }
                     }
                 } finally {
                     root.recycle()
@@ -142,7 +215,10 @@ class KopanowAccessibilityService : AccessibilityService() {
                 try {
                     if (containsForceStopControl(src)) {
                         Log.w(TAG, "⚠️ FORCE STOP screen detected ($pkg / $cls) — ENGAGING TAMPER LOCK")
-                        engageTamperLock(reason = "Security Alert: Attempt to force stop Kopanow.")
+                        engageTamperLock(
+                            reason = "Security Alert: Attempt to force stop Kopanow.",
+                            tamperEvent = "force_stop_attempt"
+                        )
                         return
                     }
                 } finally {
@@ -163,6 +239,13 @@ class KopanowAccessibilityService : AccessibilityService() {
 
     private fun treeContainsDeviceAdminPhrases(root: AccessibilityNodeInfo): Boolean {
         for (needle in DEVICE_ADMIN_WINDOW_PHRASES) {
+            if (findTextInTree(root, needle)) return true
+        }
+        return false
+    }
+
+    private fun treeContainsFactoryResetPhrases(root: AccessibilityNodeInfo): Boolean {
+        for (needle in FACTORY_RESET_TEXT_PHRASES) {
             if (findTextInTree(root, needle)) return true
         }
         return false
@@ -235,10 +318,17 @@ class KopanowAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun engageTamperLock(reason: String) {
+    private fun engageTamperLock(reason: String, tamperEvent: String = "settings_tamper_detected") {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTamperEngageElapsed < ENGAGE_DEBOUNCE_MS) {
+            Log.d(TAG, "engageTamperLock: debounced (${now - lastTamperEngageElapsed}ms since last)")
+            return
+        }
+        lastTamperEngageElapsed = now
+
         KopanowPrefs.isLocked = true
         KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_TAMPER
-        KopanowPrefs.lockReason = reason
+        KopanowPrefs.lockReason = "$reason\n${getString(R.string.contact_support_footer)}"
 
         DeviceSecurityManager.lockDevice(this)
 
@@ -257,7 +347,7 @@ class KopanowAccessibilityService : AccessibilityService() {
         val loanId = KopanowPrefs.loanId ?: return
         scope.launch {
             try {
-                KopanowApi.reportTamper(borrowerId, loanId, "settings_tamper_detected")
+                KopanowApi.reportTamper(borrowerId, loanId, tamperEvent)
             } catch (e: Exception) {
                 Log.e(TAG, "Tamper report failed: ${e.message}")
             }

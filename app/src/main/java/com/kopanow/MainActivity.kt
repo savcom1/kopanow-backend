@@ -3,9 +3,9 @@ package com.kopanow
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.net.Uri
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProtectionSub: TextView
     private lateinit var ivProtectionStatus: ImageView
     private lateinit var tvMdmChecklist: TextView
+    private lateinit var btnContactSupport: MaterialButton
 
     private val complianceHandler = Handler(Looper.getMainLooper())
     private val complianceRefreshRunnable = object : Runnable {
@@ -158,9 +159,11 @@ class MainActivity : AppCompatActivity() {
         tvProtectionSub = findViewById(R.id.tv_protection_sub)
         ivProtectionStatus = findViewById(R.id.iv_protection_status)
         tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
+        btnContactSupport = findViewById(R.id.btn_contact_support)
 
         btnEnroll.setOnClickListener { triggerEnrollment() }
         btnPayNow.setOnClickListener { initiatePayment() }
+        btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
     }
 
     private fun updateProtectionStatusUI(@Suppress("UNUSED_PARAMETER") active: Boolean) {
@@ -181,7 +184,7 @@ class MainActivity : AppCompatActivity() {
                 ivProtectionStatus.setImageResource(android.R.drawable.presence_online)
                 ImageViewCompat.setImageTintList(
                     ivProtectionStatus,
-                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    ColorStateList.valueOf(ContextCompat.getColor(this, R.color.kopanow_teal))
                 )
             }
             adminOn -> {
@@ -190,7 +193,7 @@ class MainActivity : AppCompatActivity() {
                 ivProtectionStatus.setImageResource(android.R.drawable.presence_busy)
                 ImageViewCompat.setImageTintList(
                     ivProtectionStatus,
-                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_orange_dark))
+                    ColorStateList.valueOf(ContextCompat.getColor(this, R.color.kopanow_warning))
                 )
             }
             else -> {
@@ -199,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 ivProtectionStatus.setImageResource(android.R.drawable.presence_busy)
                 ImageViewCompat.setImageTintList(
                     ivProtectionStatus,
-                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                    ColorStateList.valueOf(ContextCompat.getColor(this, R.color.kopanow_error))
                 )
             }
         }
@@ -248,6 +251,27 @@ class MainActivity : AppCompatActivity() {
         return KopanowPrefs.borrowerId?.trim().orEmpty().ifEmpty { "User" }
     }
 
+    /** Pill badges: paid/active → green, pending/processing → amber, locked/overdue → red. */
+    private fun applyLoanStatusBadge(rawStatus: String?) {
+        val label = rawStatus?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+        tvStatusBadge.text = label
+        val s = rawStatus?.lowercase().orEmpty()
+        val bg = when {
+            s in listOf("active", "paid", "completed") -> R.drawable.bg_badge_paid
+            s in listOf("locked", "overdue", "suspended", "defaulted") -> R.drawable.bg_badge_overdue
+            s in listOf("processing", "pending", "unregistered") -> R.drawable.bg_badge_pending
+            else -> R.drawable.bg_badge_neutral
+        }
+        val fg = when (bg) {
+            R.drawable.bg_badge_paid -> R.color.badge_paid_text
+            R.drawable.bg_badge_overdue -> R.color.badge_overdue_text
+            R.drawable.bg_badge_pending -> R.color.badge_pending_text
+            else -> R.color.badge_neutral_text
+        }
+        tvStatusBadge.setBackgroundResource(bg)
+        tvStatusBadge.setTextColor(ContextCompat.getColor(this, fg))
+    }
+
     private fun fetchLoanDetails() {
         val borrowerId = KopanowPrefs.borrowerId ?: return
         val loanId = KopanowPrefs.loanId ?: return
@@ -263,15 +287,7 @@ class MainActivity : AppCompatActivity() {
                     tvWelcome.text = helloLine()
                     tvLoanBalance.text = loan.balance ?: "TSh 0.00"
                     tvNextDue.text = loan.nextDueDate ?: "N/A"
-                    tvStatusBadge.text = loan.loanStatus?.replaceFirstChar { it.uppercase() } ?: "Unknown"
-                    
-                    val colorRes = when(loan.loanStatus) {
-                        "active" -> android.R.color.holo_green_dark
-                        "locked" -> android.R.color.holo_red_dark
-                        "processing" -> android.R.color.holo_orange_dark
-                        else -> android.R.color.darker_gray
-                    }
-                    tvStatusBadge.setTextColor(ContextCompat.getColor(this@MainActivity, colorRes))
+                    applyLoanStatusBadge(loan.loanStatus)
                 }
             }
         }

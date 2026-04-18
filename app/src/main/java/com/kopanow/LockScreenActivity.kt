@@ -20,7 +20,6 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
@@ -50,7 +49,6 @@ class LockScreenActivity : AppCompatActivity() {
     companion object {
         private const val TAG              = "LockScreenActivity"
         private const val POLL_INTERVAL_MS = 30_000L
-        const  val SUPPORT_PHONE          = "+255000000000"
         private const val EMERGENCY_NUMBER = "112"
         private const val PIN_LENGTH       = 6
         private const val MAX_PIN_ATTEMPTS = 5
@@ -189,9 +187,9 @@ class LockScreenActivity : AppCompatActivity() {
 
         // Lock reason
         val reason = when {
-            isPasscode -> "Enter the PIN provided by Kopanow support to unlock your device."
-            isTamper   -> KopanowPrefs.lockReason ?: "Locked due to a security violation."
-            else       -> KopanowPrefs.lockReason ?: "Please make a payment to unlock your device."
+            isPasscode -> getString(R.string.lock_reason_passcode_with_phone)
+            isTamper   -> KopanowPrefs.lockReason ?: getString(R.string.lock_reason_tamper_default)
+            else       -> KopanowPrefs.lockReason ?: getString(R.string.lock_reason_payment_default)
         }
         findViewById<TextView>(R.id.tv_lock_reason).text = reason
 
@@ -207,11 +205,11 @@ class LockScreenActivity : AppCompatActivity() {
         // Support call button
         findViewById<MaterialButton>(R.id.btn_call_support).setOnClickListener {
             dismissKeyboard()
-            startActivity(Intent(Intent.ACTION_DIAL, "tel:$SUPPORT_PHONE".toUri()))
+            startActivity(SupportContact.dialIntent(this))
         }
         // Emergency dial
         findViewById<TextView>(R.id.tv_emergency).setOnClickListener {
-            startActivity(Intent(Intent.ACTION_DIAL, "tel:$EMERGENCY_NUMBER".toUri()))
+            startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:$EMERGENCY_NUMBER")))
         }
 
         // Show/hide PIN keypad based on mode
@@ -284,7 +282,7 @@ class LockScreenActivity : AppCompatActivity() {
 
                 if (result.success) {
                     tvStatus.text      = getString(R.string.lock_pay_submitted)
-                    tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, android.R.color.holo_green_light))
+                    tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, R.color.kopanow_teal))
                     tvStatus.visibility = View.VISIBLE
                     etRef.setText("")
                     etAmount.setText("")
@@ -297,7 +295,7 @@ class LockScreenActivity : AppCompatActivity() {
                         else       -> getString(R.string.lock_pay_error_fmt, result.error ?: "Network error")
                     }
                     tvStatus.text      = msg
-                    tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, android.R.color.holo_red_light))
+                    tvStatus.setTextColor(ContextCompat.getColor(this@LockScreenActivity, R.color.kopanow_error))
                     tvStatus.visibility = View.VISIBLE
                 }
             }
@@ -309,7 +307,7 @@ class LockScreenActivity : AppCompatActivity() {
         val loanId     = KopanowPrefs.loanId     ?: return
 
         tvStatus.text      = "Checking…"
-        tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+        tvStatus.setTextColor(ContextCompat.getColor(this, R.color.kopanow_text_muted))
         tvStatus.visibility = View.VISIBLE
 
         activityScope.launch {
@@ -323,15 +321,15 @@ class LockScreenActivity : AppCompatActivity() {
                 val (msg, color) = when (latest.status) {
                     "verified" -> Pair(
                         getString(R.string.lock_pay_status_verified),
-                        android.R.color.holo_green_light
+                        R.color.kopanow_teal
                     )
                     "rejected" -> Pair(
                         "${getString(R.string.lock_pay_status_rejected)}\n${latest.reviewerNote ?: ""}",
-                        android.R.color.holo_red_light
+                        R.color.kopanow_error
                     )
                     else -> Pair(
                         getString(R.string.lock_pay_status_pending),
-                        android.R.color.darker_gray
+                        R.color.kopanow_warning
                     )
                 }
                 tvStatus.text = msg
@@ -400,7 +398,7 @@ class LockScreenActivity : AppCompatActivity() {
                 resetPinState()
                 Toast.makeText(
                     this,
-                    "⛔ Security alert active. Contact Kopanow to unlock.",
+                    getString(R.string.lock_toast_tamper_contact),
                     Toast.LENGTH_LONG
                 ).show()
                 // Ensure watchdog is running
@@ -439,7 +437,7 @@ class LockScreenActivity : AppCompatActivity() {
                 }
                 Toast.makeText(
                     this,
-                    "Majaribio mengi mabaya. Kopanow amearifiwa. Piga simu msaada.",
+                    getString(R.string.lock_toast_pin_locked_out_sw),
                     Toast.LENGTH_LONG
                 ).show()
                 pinAttempts = 0

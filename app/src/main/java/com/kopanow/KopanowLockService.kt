@@ -232,7 +232,7 @@ class KopanowLockService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("Kopanow Device Management")
-            .setContentText("This device is managed by Kopanow Loan Services")
+            .setContentText(getString(R.string.fg_notification_managed_with_phone))
             .setContentIntent(pi)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)          // cannot be dismissed by user

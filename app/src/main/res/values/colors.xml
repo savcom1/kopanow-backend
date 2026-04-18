@@ -1,5 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- ═══ Kopanow fintech palette (East African mobile money style) ═══ -->
+    <color name="kopanow_navy">#1A2B4A</color>
+    <color name="kopanow_navy_dark">#121E33</color>
+    <color name="kopanow_teal">#00C48C</color>
+    <color name="kopanow_teal_dark">#00A876</color>
+    <color name="kopanow_white">#FFFFFF</color>
+    <color name="kopanow_bg">#F5F7FA</color>
+    <color name="kopanow_surface">#FFFFFF</color>
+    <color name="kopanow_surface_muted">#EEF1F5</color>
+    <color name="kopanow_border">#E2E8F0</color>
+    <color name="kopanow_text_primary">#1A2B4A</color>
+    <color name="kopanow_text_secondary">#5C6B82</color>
+    <color name="kopanow_text_muted">#8B98A8</color>
+    <color name="kopanow_error">#E53935</color>
+    <color name="kopanow_warning">#F5A623</color>
+    <color name="kopanow_success">#00A651</color>
+
+    <!-- Status pills -->
+    <color name="badge_paid_bg">#E6F9F2</color>
+    <color name="badge_paid_text">#007A4D</color>
+    <color name="badge_pending_bg">#FFF4E0</color>
+    <color name="badge_pending_text">#C67A00</color>
+    <color name="badge_overdue_bg">#FFEBEE</color>
+    <color name="badge_overdue_text">#C62828</color>
+    <color name="badge_neutral_bg">#EEF1F5</color>
+    <color name="badge_neutral_text">#5C6B82</color>
+
+    <!-- Legacy / Material bridge -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -8,37 +36,18 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- ── Lock screen ── -->
-    <!-- Backgrounds -->
-    <color name="lock_bg">#0D0D0D</color>
-    <color name="lock_card_bg">#1A1A1A</color>
-
-    <!-- Brand wordmark -->
-    <color name="lock_brand">#8C8C8C</color>
-
-    <!-- Lock icon — alert red -->
-    <color name="lock_icon_tint">#FF4E4E</color>
-
-    <!-- Amount due — amber/gold -->
-    <color name="lock_amount">#FFD166</color>
-
-    <!-- Text hierarchy -->
-    <color name="lock_text_primary">#F5F5F5</color>
-    <color name="lock_text_secondary">#A0A0A0</color>
-
-    <!-- Days overdue — warm orange-red -->
-    <color name="lock_overdue">#FF6B35</color>
-
-    <!-- Divider -->
-    <color name="lock_divider">#2E2E2E</color>
-
-    <!-- M-Pesa green CTA -->
-    <color name="lock_mpesa_green">#00A651</color>
-    <color name="lock_btn_pay_text">#FFFFFF</color>
-
-    <!-- Support button border -->
-    <color name="lock_btn_support_border">#3A3A3A</color>
-
-    <!-- Emergency call link -->
-    <color name="lock_emergency_text">#606060</color>
+    <!-- ── Lock screen (light, aligned with main app) ── -->
+    <color name="lock_bg">@color/kopanow_bg</color>
+    <color name="lock_card_bg">@color/kopanow_surface</color>
+    <color name="lock_brand">@color/kopanow_navy</color>
+    <color name="lock_icon_tint">@color/kopanow_teal</color>
+    <color name="lock_amount">@color/kopanow_navy</color>
+    <color name="lock_text_primary">@color/kopanow_text_primary</color>
+    <color name="lock_text_secondary">@color/kopanow_text_secondary</color>
+    <color name="lock_overdue">@color/kopanow_error</color>
+    <color name="lock_divider">@color/kopanow_border</color>
+    <color name="lock_mpesa_green">@color/kopanow_teal</color>
+    <color name="lock_btn_pay_text">@color/kopanow_white</color>
+    <color name="lock_btn_support_border">@color/kopanow_border</color>
+    <color name="lock_emergency_text">@color/kopanow_text_muted</color>
 </resources>

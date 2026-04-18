@@ -19,7 +19,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
-import androidx.core.net.toUri
 import com.google.android.material.button.MaterialButton
 import android.widget.TextView
 
@@ -113,7 +112,7 @@ class OverlayLockService : Service() {
             })
         }
         view.findViewById<MaterialButton>(R.id.btn_call_support).setOnClickListener {
-            startActivity(Intent(Intent.ACTION_DIAL, "tel:${LockScreenActivity.SUPPORT_PHONE}".toUri()).apply {
+            startActivity(SupportContact.dialIntent(this@OverlayLockService).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
         }
@@ -167,9 +166,10 @@ class OverlayLockService : Service() {
             else -> "Device Locked"
         }
         body.text = when {
-            isPasscode -> "Enter the PIN provided by Kopanow support."
-            isTamper -> KopanowPrefs.lockReason ?: "Locked due to a security violation."
-            else -> KopanowPrefs.lockReason ?: "Please make a payment to unlock your device."
+            isPasscode -> getString(R.string.overlay_body_passcode_with_phone)
+            isTamper -> KopanowPrefs.lockReason ?: "Locked due to a security violation. Call 0744505529."
+            else -> KopanowPrefs.lockReason
+                ?: "Please make a payment to unlock your device. Support: 0744505529."
         }
     }
 

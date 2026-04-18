@@ -3,23 +3,21 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F7FA"
+    android:background="@color/kopanow_bg"
     android:fillViewport="true">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="24dp">
+        android:padding="@dimen/padding_screen">
 
         <TextView
             android:id="@+id/tv_reg_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Register &amp; Request a Loan"
-            android:textColor="#263238"
-            android:textSize="26sp"
-            android:textStyle="bold"
+            android:layout_marginTop="@dimen/grid_3"
+            android:text="Register &amp; request a loan"
+            android:textAppearance="@style/TextAppearance.Kopanow.PageTitle"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -27,44 +25,65 @@
             android:id="@+id/tv_reg_sub"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/grid_1"
             android:text="Fill your details and request a loan. Activation will be available after your request is submitted."
-            android:textColor="#78909C"
-            android:textSize="14sp"
+            android:textAppearance="@style/TextAppearance.Kopanow.Body"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tv_reg_title" />
 
-        <!-- ── Borrower identity ───────────────────────────────────────── -->
+        <TextView
+            android:id="@+id/tv_contact_support_hint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_2"
+            android:text="@string/contact_support_footer"
+            android:textAppearance="@style/TextAppearance.Kopanow.Body"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_reg_sub" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_contact_support"
+            style="@style/Widget.Kopanow.Button.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_1"
+            android:text="@string/lock_btn_support"
+            app:icon="@android:drawable/ic_menu_call"
+            app:iconGravity="textStart"
+            app:iconTint="@color/kopanow_teal"
+            app:layout_constraintTop_toBottomOf="@id/tv_contact_support_hint" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_full_name"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="@dimen/section_spacing"
             android:hint="Full name"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
-            app:layout_constraintTop_toBottomOf="@id/tv_reg_sub">
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
+            app:layout_constraintTop_toBottomOf="@id/btn_contact_support">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_full_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="textPersonName"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_national_id"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/grid_2"
             android:hint="National ID / NIDA number"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_full_name">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -72,18 +91,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_phone"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="M-Pesa Phone Number (255...)"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            android:layout_marginTop="@dimen/grid_2"
+            android:hint="M-Pesa phone number (255…)"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_national_id">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -91,18 +111,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="phone"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_region"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/grid_2"
             android:hint="Region"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_phone">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -110,18 +131,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_address"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Street / Ward / Address"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            android:layout_marginTop="@dimen/grid_2"
+            android:hint="Street / ward / address"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_region">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -130,32 +152,29 @@
                 android:layout_height="wrap_content"
                 android:inputType="textPostalAddress|textMultiLine"
                 android:minLines="2"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- ── Loan request ─────────────────────────────────────────────── -->
 
         <TextView
             android:id="@+id/tv_loan_request_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="Loan Request"
-            android:textColor="#263238"
-            android:textSize="18sp"
-            android:textStyle="bold"
+            android:layout_marginTop="@dimen/section_spacing"
+            android:text="Loan request"
+            android:textAppearance="@style/TextAppearance.Kopanow.Section"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/til_address" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_loan_amount"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/grid_2"
             android:hint="Requested amount (TZS)"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/tv_loan_request_title">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -163,18 +182,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="number"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_repayment_months"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.Kopanow.TextInput.ExposedDropdown"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/grid_2"
             android:hint="Repayment period"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_loan_amount">
 
             <com.google.android.material.textfield.MaterialAutoCompleteTextView
@@ -182,18 +202,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="none"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_loan_purpose"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.Kopanow.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/grid_2"
             android:hint="Purpose (e.g. business, school fees)"
-            app:boxStrokeColor="@color/lock_brand"
-            app:hintTextColor="@color/lock_brand"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_repayment_months">
 
             <com.google.android.material.textfield.TextInputEditText
@@ -202,36 +223,34 @@
                 android:layout_height="wrap_content"
                 android:inputType="textCapSentences|textMultiLine"
                 android:minLines="2"
-                android:textColor="#263238" />
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_submit_request"
+            style="@style/Widget.Kopanow.Button.Primary"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="20dp"
-            android:text="Submit Loan Request"
-            android:textAllCaps="false"
-            android:textSize="16sp"
-            app:cornerRadius="12dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_3"
+            android:text="Submit loan request"
             app:layout_constraintTop_toBottomOf="@id/til_loan_purpose" />
 
         <TextView
             android:id="@+id/tv_request_status"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:textColor="#546E7A"
-            android:textSize="12sp"
+            android:layout_marginTop="@dimen/grid_2"
+            android:textAppearance="@style/TextAppearance.Kopanow.Caption"
             android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/btn_submit_request"
+            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/btn_submit_request" />
 
         <View
             android:id="@+id/bottom_spacer"
             android:layout_width="match_parent"
-            android:layout_height="24dp"
+            android:layout_height="@dimen/grid_3"
             app:layout_constraintTop_toBottomOf="@id/tv_request_status" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>

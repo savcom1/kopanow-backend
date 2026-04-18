@@ -226,7 +226,7 @@ class KopanowFCMService : FirebaseMessagingService() {
             this,
             KopanowNotifications.NOTIF_ID_LOCK_COMMAND,
             "Device locked",
-            lockReason ?: "Your device was locked by Kopanow Loan Services.",
+            lockReason ?: getString(R.string.fcm_device_locked_default),
             tapPi
         )
 

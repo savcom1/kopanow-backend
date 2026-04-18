@@ -49,7 +49,10 @@ class RegistrationActivity : AppCompatActivity() {
         val tilPurpose   = findViewById<TextInputLayout>(R.id.til_loan_purpose)
 
         val btnSubmit    = findViewById<MaterialButton>(R.id.btn_submit_request)
+        val btnContactSupport = findViewById<MaterialButton>(R.id.btn_contact_support)
         val tvStatus     = findViewById<android.widget.TextView>(R.id.tv_request_status)
+
+        btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
 
         // Pre-fill if user returns here
         etFullName.setText(KopanowPrefs.fullName ?: "")

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 8px grid -->
+    <dimen name="grid_1">8dp</dimen>
+    <dimen name="grid_2">16dp</dimen>
+    <dimen name="grid_3">24dp</dimen>
+    <dimen name="grid_4">32dp</dimen>
+
+    <dimen name="padding_screen">@dimen/grid_3</dimen>
+    <dimen name="padding_card">@dimen/grid_2</dimen>
+    <dimen name="section_spacing">@dimen/grid_3</dimen>
+
+    <dimen name="corner_card">12dp</dimen>
+    <dimen name="corner_button">8dp</dimen>
+    <dimen name="corner_pill">999dp</dimen>
+
+    <dimen name="elevation_card">4dp</dimen>
+    <dimen name="elevation_soft">2dp</dimen>
+
+    <dimen name="text_page_title">24sp</dimen>
+    <dimen name="text_section">16sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_caption">12sp</dimen>
+</resources>

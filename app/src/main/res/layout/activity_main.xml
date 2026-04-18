@@ -2,22 +2,24 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F7FA">
+    android:background="@color/kopanow_bg">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@android:color/transparent"
-        app:elevation="0dp">
+        android:background="@color/kopanow_navy"
+        app:elevation="@dimen/elevation_soft">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="Kopanow Loan"
-            app:titleTextColor="@color/lock_brand" />
+            app:title="@string/main_toolbar_title"
+            app:titleTextAppearance="@style/TextAppearance.Kopanow.ToolbarTitle"
+            app:titleTextColor="@color/kopanow_white" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -29,103 +31,103 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="20dp">
+            android:padding="@dimen/padding_screen">
 
-            <!-- Enrollment Card (Visible when NOT enrolled) -->
+            <!-- Enrollment -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_enrollment"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="4dp"
+                android:layout_marginBottom="@dimen/section_spacing"
+                app:cardBackgroundColor="@color/kopanow_surface"
+                app:cardCornerRadius="@dimen/corner_card"
+                app:cardElevation="@dimen/elevation_card"
                 app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="@dimen/padding_card">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Action Required"
-                        android:textColor="#E53935"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:text="Action required"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Section"
+                        android:textColor="@color/kopanow_error" />
 
                     <TextView
                         android:id="@+id/tv_enrollment_status"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Device Not Enrolled. Please activate device protection to access your loan funds."
-                        android:textColor="#546E7A" />
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
+                        tools:text="Device not enrolled…" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_test_enroll"
+                        style="@style/Widget.Kopanow.Button.Primary"
                         android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="20dp"
-                        android:text="Activate Protection"
-                        app:cornerRadius="12dp" />
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:text="Activate protection" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Dashboard Card (Visible when enrolled) -->
+            <!-- Dashboard -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_dashboard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="@dimen/section_spacing"
                 android:visibility="gone"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/kopanow_surface"
+                app:cardCornerRadius="@dimen/corner_card"
+                app:cardElevation="@dimen/elevation_card"
                 app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="@dimen/padding_card">
 
                     <TextView
                         android:id="@+id/tv_welcome"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Hello, Borrower"
-                        android:textColor="#263238"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
+                        android:textAppearance="@style/TextAppearance.Kopanow.PageTitle"
+                        tools:text="Hello, Borrower" />
 
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:layout_marginTop="16dp"
-                        android:layout_marginBottom="16dp"
-                        android:background="#ECEFF1" />
+                        android:layout_marginVertical="@dimen/grid_2"
+                        android:background="@color/kopanow_border" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Loan Balance"
-                        android:textColor="#78909C"
-                        android:textSize="14sp" />
+                        android:text="Loan balance"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textAllCaps="true"
+                        android:letterSpacing="0.06" />
 
                     <TextView
                         android:id="@+id/tv_loan_balance"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
                         android:text="TSh --"
-                        android:textColor="@color/lock_brand"
+                        android:textColor="@color/kopanow_navy"
                         android:textSize="32sp"
-                        android:textStyle="bold" />
+                        android:fontFamily="@font/inter_bold" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
+                        android:layout_marginTop="@dimen/grid_3"
                         android:orientation="horizontal">
 
                         <LinearLayout
@@ -137,83 +139,94 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Next Due"
-                                android:textColor="#78909C"
-                                android:textSize="12sp" />
+                                android:text="Next due"
+                                android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                                android:textAllCaps="true"
+                                android:letterSpacing="0.06" />
 
                             <TextView
                                 android:id="@+id/tv_next_due"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Pending..."
-                                android:textColor="#263238"
-                                android:textStyle="bold" />
+                                android:layout_marginTop="4dp"
+                                android:textAppearance="@style/TextAppearance.Kopanow.Section"
+                                tools:text="Pending…" />
                         </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical">
+                            android:orientation="vertical"
+                            android:gravity="end">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Status"
-                                android:textColor="#78909C"
-                                android:textSize="12sp" />
+                                android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                                android:textAllCaps="true"
+                                android:letterSpacing="0.06" />
 
                             <TextView
                                 android:id="@+id/tv_status_badge"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:background="@drawable/bg_badge_pending"
+                                android:paddingHorizontal="12dp"
+                                android:paddingVertical="6dp"
                                 android:text="Processing"
-                                android:textColor="#F57C00"
-                                android:textStyle="bold" />
+                                android:textColor="@color/badge_pending_text"
+                                android:textSize="13sp"
+                                android:fontFamily="@font/inter_semibold" />
                         </LinearLayout>
                     </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_pay_now"
+                        style="@style/Widget.Kopanow.Button.Primary"
                         android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="32dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_3"
                         android:text="Pay via M-Pesa"
-                        app:cornerRadius="12dp"
-                        app:icon="@android:drawable/ic_menu_send" />
+                        app:icon="@android:drawable/ic_menu_send"
+                        app:iconGravity="textStart" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Device Protection + live MDM checklist -->
+            <!-- Protection + checklist -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/kopanow_surface"
+                app:cardCornerRadius="@dimen/corner_card"
+                app:cardElevation="@dimen/elevation_soft"
                 app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="@dimen/padding_card">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
                         <ImageView
                             android:layout_width="40dp"
                             android:layout_height="40dp"
+                            android:contentDescription="@null"
                             android:src="@android:drawable/ic_lock_idle_lock"
-                            app:tint="@color/lock_brand" />
+                            app:tint="@color/kopanow_teal" />
 
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="16dp"
+                            android:layout_marginStart="@dimen/grid_2"
                             android:layout_weight="1"
                             android:orientation="vertical">
 
@@ -221,51 +234,64 @@
                                 android:id="@+id/tv_protection_title"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Device Protection"
-                                android:textColor="#263238"
-                                android:textStyle="bold" />
+                                android:text="Device protection"
+                                android:textAppearance="@style/TextAppearance.Kopanow.Section" />
 
                             <TextView
                                 android:id="@+id/tv_protection_sub"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Checking status…"
-                                android:textColor="#78909C"
-                                android:textSize="12sp" />
+                                android:textAppearance="@style/TextAppearance.Kopanow.Caption" />
                         </LinearLayout>
 
                         <ImageView
                             android:id="@+id/iv_protection_status"
                             android:layout_width="24dp"
                             android:layout_height="24dp"
+                            android:contentDescription="@null"
                             android:src="@android:drawable/presence_online"
-                            app:tint="#4CAF50" />
+                            app:tint="@color/kopanow_teal" />
                     </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="@dimen/grid_2"
                         android:text="Live requirements"
-                        android:textColor="#546E7A"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textAllCaps="true"
+                        android:letterSpacing="0.06" />
 
                     <TextView
                         android:id="@+id/tv_mdm_checklist"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:fontFamily="sans-serif-medium"
                         android:lineSpacingExtra="3dp"
                         android:text="…"
-                        android:textColor="#37474F"
-                        android:textSize="13sp"
-                        android:typeface="sans" />
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
+                        android:textColor="@color/kopanow_text_primary" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:text="@string/contact_support_footer"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_contact_support"
+                        style="@style/Widget.Kopanow.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:text="@string/lock_btn_support"
+                        app:icon="@android:drawable/ic_menu_call"
+                        app:iconGravity="textStart"
+                        app:iconTint="@color/kopanow_teal" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -83,7 +83,8 @@ class RepaymentAlarmReceiver : BroadcastReceiver() {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
         )
-        KopanowNotifications.showRepaymentReminder(context, id, title, text, pi)
+        val textWithSupport = text + context.getString(R.string.support_notif_suffix)
+        KopanowNotifications.showRepaymentReminder(context, id, title, textWithSupport, pi)
     }
 
     companion object {

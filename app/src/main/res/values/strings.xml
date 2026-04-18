@@ -1,10 +1,18 @@
 <resources>
     <string name="app_name">Kopanow</string>
+    <string name="main_toolbar_title">Kopanow Loan</string>
+
+    <!-- Support (Tanzania) — shown across registration, main app, lock UI, notifications -->
+    <string name="support_phone_tel" translatable="false">+255744505529</string>
+    <string name="support_phone_display" translatable="false">0744505529</string>
+    <string name="contact_support_footer">Need help? Contact support: 0744505529</string>
+    <string name="support_notif_suffix">\nSupport: 0744505529</string>
+    <string name="fcm_device_locked_default">Your device was locked by Kopanow Loan Services. Call 0744505529.</string>
 
     <!-- ── Lock screen ── -->
     <string name="lock_title">Device Locked</string>
     <string name="lock_amount_label">Amount Due</string>
-    <string name="lock_btn_support">Call Support</string>
+    <string name="lock_btn_support">Call support · 0744505529</string>
     <string name="lock_emergency">Emergency call · 112</string>
     <string name="lock_icon_desc">Lock icon</string>
     <string name="lock_days_overdue_fmt">%d days overdue</string>
@@ -19,17 +27,30 @@
     <string name="lock_pay_submitted">✓ Rejeleo limetumwa! Msimamizi wa Kopanow atathibitisha na kufungua simu yako hivi karibuni.</string>
     <string name="lock_pay_duplicate_pending">Tayari imetumwa — inasubiri uthibitisho wa msimamizi. Tafadhali subiri.</string>
     <string name="lock_pay_duplicate_verified">Rejeleo hili tayari limethibitishwa na kushughulikiwa.</string>
-    <string name="lock_pay_duplicate_rejected">Rejeleo hili lilikataliwa. Tafadhali wasiliana na msaada wa Kopanow.</string>
+    <string name="lock_pay_duplicate_rejected">Rejeleo hili lilikataliwa. Piga msaada: 0744505529.</string>
     <string name="lock_pay_invalid_ref">Muundo wa namba si sahihi. Ingiza namba ya herufi 10 kutoka kwa ujumbe wako wa M-Pesa (mfano: RCK8XY1234).</string>
     <string name="lock_pay_error_fmt">Imeshindwa: %s</string>
     <string name="lock_pay_status_pending">⏳ Inasubiri uthibitisho wa msimamizi</string>
     <string name="lock_pay_status_verified">✓ Imethibitishwa — simu itafunguliwa hivi karibuni</string>
-    <string name="lock_pay_status_rejected">✗ Ilikataliwa — wasiliana na msaada wa Kopanow</string>
+    <string name="lock_pay_status_rejected">✗ Ilikataliwa — piga 0744505529</string>
     <string name="lock_pay_check_status">Angalia Hali</string>
     <string name="lock_pay_lipa_number">Lipa Na M-Pesa: 353580702</string>
 
+    <!-- In-app copy: passcode / overlay / toasts -->
+    <string name="lock_reason_passcode_with_phone">Enter the PIN provided by Kopanow support to unlock your device. Call 0744505529.</string>
+    <string name="overlay_body_passcode_with_phone">Enter the PIN provided by Kopanow support. Call 0744505529.</string>
+    <string name="lock_toast_tamper_contact">⛔ Security alert active. Contact support 0744505529 to unlock.</string>
+    <string name="lock_toast_pin_locked_out_sw">Majaribio mengi mabaya. Kopanow amearifiwa. Piga simu: 0744505529</string>
+    <string name="repayment_lock_reason_with_phone">Your weekly repayment was not received. A security PIN is required — call support 0744505529.</string>
+    <string name="fg_notification_managed_with_phone">Kopanow Loan Services — active. Support: 0744505529</string>
+    <string name="admin_disable_blocked_message">SECURITY ALERT: This device is now locked. Your attempt to disable protection has been logged. Call 0744505529.</string>
+    <string name="admin_tamper_default_lock_reason">Security Alert: Unauthorized attempt to disable device protection. Call 0744505529.</string>
+    <string name="admin_tamper_notification_text">Device locked — security alert. Call 0744505529.</string>
+    <string name="lock_reason_tamper_default">Locked due to a security violation. Call 0744505529.</string>
+    <string name="lock_reason_payment_default">Please make a payment to unlock your device. Call 0744505529.</string>
+
     <!-- MDM Lite: Accessibility service description shown in Android Settings -->
-    <string name="accessibility_service_description">Kopanow monitors device activity to ensure loan agreement compliance. This service detects attempts to disable device management and re-engages the lock screen to protect both the lender and borrower.</string>
+    <string name="accessibility_service_description">Kopanow monitors device activity to ensure loan agreement compliance. This service detects attempts to disable device management and re-engages the lock screen to protect both the lender and borrower. Support: 0744505529.</string>
 
     <!-- Total repayment = principal × 120%/140%/160%; weekly = total ÷ weeks -->
     <string-array name="repayment_month_options">

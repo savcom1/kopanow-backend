@@ -35,7 +35,7 @@ object RepaymentPinEnforcer {
         KopanowPrefs.isLocked = true
         KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_PAYMENT
         KopanowPrefs.lockReason =
-            "Your weekly repayment was not received. A security PIN is required — contact Kopanow support."
+            context.getString(R.string.repayment_lock_reason_with_phone)
         KopanowPrefs.localPinLockInvoiceNumber = invoiceNumber
 
         DeviceSecurityManager.lockDevice(context)
