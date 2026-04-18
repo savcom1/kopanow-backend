@@ -50,6 +50,16 @@ router.get('/devices', async (req, res) => {
 
     if (error) throw error;
 
+    const borrowerIds = [...new Set((devices || []).map((d) => d.borrower_id).filter(Boolean))];
+    let nameByBorrower = {};
+    if (borrowerIds.length) {
+      const { data: regs } = await supabase
+        .from('registrations')
+        .select('borrower_id, full_name')
+        .in('borrower_id', borrowerIds);
+      nameByBorrower = Object.fromEntries((regs || []).map((r) => [r.borrower_id, r.full_name]));
+    }
+
     // Join loan data + per-loan invoice summary (status counts)
     const loanIds = [...new Set(devices.map(d => d.loan_id))];
     let loanMap = {};
@@ -72,6 +82,7 @@ router.get('/devices', async (req, res) => {
 
     const enriched = devices.map(d => ({
       ...d,
+      borrower_full_name: nameByBorrower[d.borrower_id] || null,
       loan: loanMap[d.loan_id]
         ? {
             ...loanMap[d.loan_id],
@@ -177,6 +188,16 @@ router.get('/loans', async (req, res) => {
 
     if (error) throw error;
 
+    const loanBorrowerIds = [...new Set((loans || []).map((l) => l.borrower_id).filter(Boolean))];
+    let loanNameByBorrower = {};
+    if (loanBorrowerIds.length) {
+      const { data: regs } = await supabase
+        .from('registrations')
+        .select('borrower_id, full_name')
+        .in('borrower_id', loanBorrowerIds);
+      loanNameByBorrower = Object.fromEntries((regs || []).map((r) => [r.borrower_id, r.full_name]));
+    }
+
     const loanIdList = (loans || []).map(l => l.loan_id);
     let invByLoan = {};
     if (loanIdList.length) {
@@ -194,6 +215,7 @@ router.get('/loans', async (req, res) => {
       success: true,
       loans: (loans || []).map((l) => ({
         ...l,
+        borrower_full_name: loanNameByBorrower[l.borrower_id] || null,
         days_overdue: daysOverdue(l.next_due_date),
         invoice_summary: summarizeInvoiceRows(invByLoan[l.loan_id] || []),
       })),

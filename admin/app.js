@@ -84,6 +84,16 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
+/** Dashboard / device tables: show registration full name with borrower id as subline when available. */
+function borrowerCellHtml(d) {
+  const name = d.borrower_full_name && String(d.borrower_full_name).trim();
+  const id = esc(d.borrower_id || '');
+  if (name) {
+    return `<div><strong>${esc(name)}</strong></div><div class="mono text-muted" style="font-size:11px">${id}</div>`;
+  }
+  return `<strong>${id || '—'}</strong>`;
+}
+
 /** Renders invoice_summary from API (pending / paid / overdue counts). */
 function formatInvoiceSummaryHtml(s) {
   if (!s || !s.total) return '<span class="text-muted">—</span>';
@@ -233,9 +243,9 @@ async function loadDashboard() {
   tbody.innerHTML = sorted.map(d => `
     <tr>
       <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="dot ${isOnline(d.last_seen) ? 'online' : 'offline'}"></span>
-          <strong>${d.borrower_id}</strong>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <span class="dot ${isOnline(d.last_seen) ? 'online' : 'offline'}" style="margin-top:4px"></span>
+          <div>${borrowerCellHtml(d)}</div>
         </div>
       </td>
       <td class="mono">${d.loan_id}</td>
@@ -279,9 +289,9 @@ async function loadDevices() {
   tbody.innerHTML = sorted.map(d => `
     <tr>
       <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="dot ${isOnline(d.last_seen) ? 'online' : 'offline'}"></span>
-          <strong>${d.borrower_id}</strong>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <span class="dot ${isOnline(d.last_seen) ? 'online' : 'offline'}" style="margin-top:4px"></span>
+          <div>${borrowerCellHtml(d)}</div>
         </div>
       </td>
       <td class="mono">${d.loan_id}</td>
@@ -352,10 +362,14 @@ async function loadLoans() {
     const tw = totalR != null && weekly != null
       ? `TZS ${totalR.toLocaleString()} <span class="text-muted">/</span> ${wk}× TZS ${weekly.toLocaleString()}`
       : '—';
+    const bName = l.borrower_full_name && String(l.borrower_full_name).trim();
+    const borrowerCol = bName
+      ? `<div><strong>${esc(bName)}</strong></div><div class="mono text-muted" style="font-size:11px">${esc(l.borrower_id)}</div>`
+      : `<span class="mono">${esc(l.borrower_id)}</span>`;
     return `
     <tr>
       <td class="mono">${esc(l.loan_id)}</td>
-      <td>${esc(l.borrower_id)}</td>
+      <td>${borrowerCol}</td>
       <td>TZS ${Number(l.principal_amount || 0).toLocaleString()}</td>
       <td style="font-size:12px">${tw}</td>
       <td><strong>TZS ${Number(l.outstanding_amount || 0).toLocaleString()}</strong></td>
@@ -385,7 +399,9 @@ async function openModal(mongoId) {
   const invoices = data.invoices || [];
   const invSum = data.invoice_summary;
 
-  $('#modal-title').textContent = `${esc(d.borrower_id)} — ${esc(d.loan_id)}`;
+  $('#modal-title').textContent = reg?.full_name
+    ? `${esc(reg.full_name)} · ${esc(d.loan_id)}`
+    : `${esc(d.borrower_id)} — ${esc(d.loan_id)}`;
 
   let html = '';
 

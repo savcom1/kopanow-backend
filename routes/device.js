@@ -386,13 +386,20 @@ router.get('/details', async (req, res) => {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
     }
 
-    const { data: loan, error } = await supabase
-      .from('loans')
-      .select('outstanding_amount, next_due_date, device_status')
-      .eq('loan_id', loan_id)
-      .maybeSingle();
+    const [{ data: loan, error: loanErr }, { data: reg }] = await Promise.all([
+      supabase
+        .from('loans')
+        .select('outstanding_amount, next_due_date, device_status')
+        .eq('loan_id', loan_id)
+        .maybeSingle(),
+      supabase
+        .from('registrations')
+        .select('full_name')
+        .eq('borrower_id', borrower_id)
+        .maybeSingle(),
+    ]);
 
-    if (error) throw error;
+    if (loanErr) throw loanErr;
     if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
 
     const due = loan.next_due_date ? new Date(loan.next_due_date).toLocaleDateString('en-TZ', {
@@ -405,6 +412,7 @@ router.get('/details', async (req, res) => {
       balance:       loan.outstanding_amount != null
                        ? `TSh ${Number(loan.outstanding_amount).toLocaleString()}` : null,
       next_due_date: due,
+      borrower_full_name: reg?.full_name || null,
       message:       'Loan details fetched'
     });
   } catch (err) {
