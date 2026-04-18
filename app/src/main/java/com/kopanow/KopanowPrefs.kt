@@ -21,6 +21,8 @@ object KopanowPrefs {
     private const val KEY_LOAN_ID       = "loan_id"
     private const val KEY_PHONE_NUMBER  = "phone_number"
     private const val KEY_IS_ADMIN      = "is_admin"
+    /** Set after first successful [KopanowApi.registerDevice] post–device-admin (full MDM enrollment). */
+    private const val KEY_MDM_TAMPER_SHIELD_ARMED = "mdm_tamper_shield_armed"
     private const val KEY_IS_LOCKED     = "is_locked"
     private const val KEY_FCM_TOKEN     = "fcm_token"
     private const val KEY_LOCK_REASON   = "lock_reason"
@@ -134,6 +136,15 @@ object KopanowPrefs {
         get() = getPrefs().getBoolean(KEY_IS_ADMIN, false)
         set(value) = getPrefs().edit().putBoolean(KEY_IS_ADMIN, value).apply()
 
+    /**
+     * True after device admin is active **and** the device has completed first-time server registration
+     * (`registerDevice`). The accessibility tamper shield requires this so enrollment flows (Settings,
+     * device-admin wizard, accessibility toggle) do not trigger a lock before MDM is fully live.
+     */
+    var mdmTamperShieldArmed: Boolean
+        get() = getPrefs().getBoolean(KEY_MDM_TAMPER_SHIELD_ARMED, false)
+        set(value) = getPrefs().edit().putBoolean(KEY_MDM_TAMPER_SHIELD_ARMED, value).apply()
+
     var isLocked: Boolean
         get() = getPrefs().getBoolean(KEY_IS_LOCKED, false)
         set(value) = getPrefs().edit().putBoolean(KEY_IS_LOCKED, value).apply()
@@ -189,8 +200,9 @@ object KopanowPrefs {
 
     /**
      * True while MDM protections should apply: device admin is (or was expected to be) active,
-     * or there is an active loan session. Accessibility tamper shield uses this — not [hasSession]
-     * alone — so entering device-admin settings is still blocked if [isAdmin] is true.
+     * or there is an active loan session. The accessibility tamper shield instead checks
+     * runtime device-admin active (see accessibility service) so pre-enrollment Settings navigation
+     * does not trigger a lock.
      */
     val isMdmProtectionActive: Boolean
         get() = isAdmin || hasSession

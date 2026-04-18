@@ -288,6 +288,9 @@ class MainActivity : AppCompatActivity() {
                     tvLoanBalance.text = loan.balance ?: "TSh 0.00"
                     tvNextDue.text = loan.nextDueDate ?: "N/A"
                     applyLoanStatusBadge(loan.loanStatus)
+                    if (DeviceSecurityManager.isAdminActive(this@MainActivity)) {
+                        KopanowPrefs.mdmTamperShieldArmed = true
+                    }
                 }
             }
         }

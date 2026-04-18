@@ -143,6 +143,9 @@ object EnrollmentManager {
                     return@launch
                 }
 
+                // First successful backend bind — arm accessibility tamper shield (not before this).
+                KopanowPrefs.mdmTamperShieldArmed = true
+
                 // 3. FRP Seeding — Prompt to add the admin Google account
                 withContext(Dispatchers.Main) {
                     FRPManager(activity).promptAccountSignIn(activity)

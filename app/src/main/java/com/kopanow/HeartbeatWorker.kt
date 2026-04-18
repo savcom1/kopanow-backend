@@ -209,6 +209,11 @@ class HeartbeatWorker(
             }
         }
 
+        // Backfill for installs predating [mdmTamperShieldArmed]: heartbeat OK + DPC active ⇒ enrolled.
+        if (DeviceSecurityManager.isAdminActive(context.applicationContext)) {
+            KopanowPrefs.mdmTamperShieldArmed = true
+        }
+
         return Result.success()
     }
 

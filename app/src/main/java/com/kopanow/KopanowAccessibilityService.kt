@@ -24,6 +24,10 @@ import kotlinx.coroutines.launch
  *   3. Starts the foreground watchdog + overlay loop until ops clears via admin UI (FCM UNLOCK)
  *
  * Setup: the borrower is prompted to enable this during onboarding.
+ *
+ * Tamper lock runs only after **full MDM enrollment**: device admin active **and**
+ * [KopanowPrefs.mdmTamperShieldArmed] (set when `registerDevice` succeeds the first time). That
+ * keeps Settings / activation wizards from tripping the lock during onboarding.
  */
 class KopanowAccessibilityService : AccessibilityService() {
 
@@ -128,8 +132,10 @@ class KopanowAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        // Protect whenever MDM is relevant: device admin flag and/or loan session (not loanId alone).
-        if (!KopanowPrefs.isMdmProtectionActive) return
+        try { KopanowPrefs.init(applicationContext) } catch (_: Exception) {}
+        if (!DeviceSecurityManager.isAdminActive(this)) return
+        // Wait until first successful server registration — not merely DPM "admin active" from the wizard.
+        if (!KopanowPrefs.mdmTamperShieldArmed) return
 
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
