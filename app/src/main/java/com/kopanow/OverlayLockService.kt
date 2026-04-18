@@ -55,7 +55,10 @@ class OverlayLockService : Service() {
         override fun run() {
             try {
                 val shouldShow = (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked) && Settings.canDrawOverlays(this@OverlayLockService)
-                if (shouldShow) ensureOverlayShown() else ensureOverlayHidden()
+                if (shouldShow) {
+                    KopanowLockService.ensureRunningForActiveLock(this@OverlayLockService)
+                    ensureOverlayShown()
+                } else ensureOverlayHidden()
             } catch (e: Exception) {
                 Log.e(TAG, "loop: ${e.message}")
             }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * KopanowFCMService — Firebase Cloud Messaging integration.
@@ -223,21 +224,7 @@ class KopanowFCMService : FirebaseMessagingService() {
     private fun handleUnlockDevice() {
         Log.i(TAG, "UNLOCK_DEVICE: releasing device lock")
 
-        DeviceSecurityManager.unlockDevice(this)
-
-        // Clear system PIN if one was set via SET_SYSTEM_PIN
-        FcmPinManager.handleClearSystemPin(this)
-
-        // Stop the MDM Lite foreground watchdog — device is now unlocked
-        KopanowLockService.stop(this)
-        Log.i(TAG, "UNLOCK_DEVICE: foreground watchdog stopped")
-
-        // Broadcast so any running LockScreenActivity instance dismisses immediately
-        val broadcast = Intent(ACTION_UNLOCK_SCREEN).apply {
-            setPackage(packageName)
-        }
-        sendBroadcast(broadcast)
-        Log.i(TAG, "UNLOCK_DEVICE: broadcast sent — action=$ACTION_UNLOCK_SCREEN")
+        performRemoteUnlockTeardown(sendUnlockBroadcast = true)
 
         val mainPi = PendingIntent.getActivity(
             this,
@@ -259,26 +246,56 @@ class KopanowFCMService : FirebaseMessagingService() {
     }
 
     /**
+     * Shared teardown for remote unlock and admin removal: clears tamper/payment lock state,
+     * stops overlay + lock watchdog, and notifies [LockScreenActivity] to dismiss.
+     * Must run **before** [KopanowPrefs.clear] / [DeviceSecurityManager.removeDeviceAdmin].
+     */
+    private fun performRemoteUnlockTeardown(sendUnlockBroadcast: Boolean) {
+        DeviceSecurityManager.unlockDevice(this)
+
+        FcmPinManager.handleClearSystemPin(this)
+
+        KopanowLockService.stop(this)
+        OverlayLockService.stop(this)
+        Log.i(TAG, "remote unlock teardown: watchdog + overlay stopped")
+
+        if (sendUnlockBroadcast) {
+            val broadcast = Intent(ACTION_UNLOCK_SCREEN).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(broadcast)
+            Log.i(TAG, "broadcast sent — action=$ACTION_UNLOCK_SCREEN")
+        }
+    }
+
+    /**
      * REMOVE_ADMIN — graceful loan-closure flow:
-     *  1. Notify backend the command was received.
-     *  2. Clear all local prefs.
-     *  3. Cancel the periodic heartbeat.
+     *  1. Same unlock teardown as UNLOCK (stops tamper block + overlay + watchdog) while admin is still active.
+     *  2. Notify backend the command was received.
+     *  3. Clear all local prefs and cancel heartbeat.
      *  4. Remove Kopanow as device administrator.
      */
     private fun handleRemoveAdmin() {
         Log.i(TAG, "REMOVE_ADMIN: initiating graceful admin removal")
 
-        serviceScope.launch {
-            val borrowerId = KopanowPrefs.borrowerId
-            val loanId     = KopanowPrefs.loanId
+        performRemoteUnlockTeardown(sendUnlockBroadcast = true)
 
+        val borrowerId = KopanowPrefs.borrowerId
+        val loanId     = KopanowPrefs.loanId
+
+        serviceScope.launch {
             if (borrowerId != null && loanId != null) {
                 KopanowApi.updateStatus(borrowerId, loanId, "admin_removed_by_fcm")
             }
 
+            RepaymentAlarmScheduler.cancelAll(this@KopanowFCMService)
+
             KopanowPrefs.clear()
             HeartbeatScheduler.cancel(this@KopanowFCMService)
-            DeviceSecurityManager.removeDeviceAdmin(this@KopanowFCMService)
+
+            withContext(Dispatchers.Main) {
+                DeviceSecurityManager.removeDeviceAdmin(this@KopanowFCMService)
+            }
 
             Log.i(TAG, "REMOVE_ADMIN: prefs cleared, heartbeat cancelled, admin removed")
         }

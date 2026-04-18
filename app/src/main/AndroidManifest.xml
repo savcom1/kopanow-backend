@@ -141,6 +141,11 @@
             android:foregroundServiceType="specialUse"
             android:stopWithTask="false" />
 
+        <!-- Local repayment reminders (AlarmManager, offline-capable). -->
+        <receiver
+            android:name=".RepaymentAlarmReceiver"
+            android:exported="false" />
+
         <!-- ── MDM Lite: Accessibility tamper shield ─────────────────── -->
         <!--   Detects when borrower opens Settings/Reset/Admin screens.  -->
         <service

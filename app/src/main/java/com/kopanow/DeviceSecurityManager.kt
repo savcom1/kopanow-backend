@@ -23,6 +23,20 @@ object DeviceSecurityManager {
 
     private const val TAG = "DeviceSecurityManager"
 
+    /**
+     * Set immediately before [removeDeviceAdmin] so [KopanowAdminReceiver.onDisabled]
+     * can tell **programmatic** release (FCM / backend) from the user turning admin off in Settings.
+     */
+    @Volatile
+    private var pendingRemoteAdminRemoval: Boolean = false
+
+    /** Called from [KopanowAdminReceiver.onDisabled] — returns once if a remote removal was in progress. */
+    internal fun consumePendingRemoteAdminRemoval(): Boolean {
+        if (!pendingRemoteAdminRemoval) return false
+        pendingRemoteAdminRemoval = false
+        return true
+    }
+
     // ─── Root detection ──────────────────────────────────────────────────
 
     /**
@@ -174,6 +188,7 @@ object DeviceSecurityManager {
             KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT  // reset tamper flag
             KopanowPrefs.isPasscodeLocked = false
             KopanowPrefs.passcodeHash     = null
+            KopanowPrefs.localPinLockInvoiceNumber = null
             // Ensure overlay is removed immediately as part of unlock.
             OverlayLockService.stop(context)
             Log.i(TAG, "unlockDevice: all lock state cleared (incl. tamper + passcode)")
@@ -212,14 +227,22 @@ object DeviceSecurityManager {
 
     /**
      * Remove Kopanow from device administrators.
-     * Called on loan closure / full repayment.
+     * Called on loan closure / full repayment (FCM, heartbeat, etc.).
+     * Sets [pendingRemoteAdminRemoval] so [KopanowAdminReceiver] does **not** treat this as tampering.
      */
     fun removeDeviceAdmin(context: Context) {
+        pendingRemoteAdminRemoval = true
         try {
             dpm(context).removeActiveAdmin(adminComponent(context))
             Log.i(TAG, "removeDeviceAdmin: admin removed")
         } catch (e: Exception) {
+            pendingRemoteAdminRemoval = false
             Log.e(TAG, "removeDeviceAdmin failed", e)
+            return
+        }
+        if (pendingRemoteAdminRemoval) {
+            Log.w(TAG, "removeDeviceAdmin: pending flag not consumed by onDisabled — clearing")
+            pendingRemoteAdminRemoval = false
         }
     }
 

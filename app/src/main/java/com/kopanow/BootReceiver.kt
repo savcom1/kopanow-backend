@@ -83,13 +83,19 @@ class BootReceiver : BroadcastReceiver() {
         HeartbeatScheduler.schedule(context)
         Log.i(TAG, "HeartbeatWorker re-scheduled after reboot")
 
+        RepaymentAlarmScheduler.rescheduleFromPrefs(context)
+        RepaymentOverdueChecker.checkAndEnforce(context)
+
         // ── 4. Start MDM Lite foreground watchdog (always when enrolled) ───
         KopanowLockService.start(context)
         Log.i(TAG, "KopanowLockService started after reboot")
 
         // ── 5. Re-apply lock if device was locked before reboot ───────────
-        if (KopanowPrefs.isLocked) {
+        if (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked) {
             Log.w(TAG, "Device is locked — applying immediate restrictions (OFFLINE support)")
+
+            // Watchdog must be up before we rely on the periodic relaunch loop
+            KopanowLockService.ensureRunningForActiveLock(context)
 
             // Force screen lock immediately (Synchronous, no network needed)
             DeviceSecurityManager.lockDevice(context)

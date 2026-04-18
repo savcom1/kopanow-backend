@@ -30,6 +30,13 @@ object KopanowPrefs {
     private const val KEY_PASSCODE_HASH = "passcode_hash"
     private const val KEY_PASSCODE_LOCK = "passcode_locked"
 
+    /** JSON array of [LoanInvoiceItem] for offline repayment alarms. */
+    private const val KEY_REPAYMENT_INVOICES_JSON = "repayment_invoices_json"
+    /** Comma-separated PendingIntent request codes for [RepaymentAlarmScheduler]. */
+    private const val KEY_REPAYMENT_ALARM_CODES   = "repayment_alarm_req_codes"
+    /** Last invoice we auto-PIN-locked locally (avoid duplicate). */
+    private const val KEY_LOCAL_PIN_LOCK_INVOICE  = "local_pin_lock_invoice"
+
     // ── Registration / profile ───────────────────────────────────────────
     private const val KEY_FULL_NAME     = "full_name"
     private const val KEY_NATIONAL_ID   = "national_id"
@@ -165,6 +172,18 @@ object KopanowPrefs {
 
     val hasSession: Boolean
         get() = borrowerId != null && loanId != null
+
+    var repaymentInvoicesJson: String?
+        get() = getPrefs().getString(KEY_REPAYMENT_INVOICES_JSON, null)
+        set(value) = getPrefs().edit().putString(KEY_REPAYMENT_INVOICES_JSON, value).apply()
+
+    var repaymentAlarmRequestCodes: String?
+        get() = getPrefs().getString(KEY_REPAYMENT_ALARM_CODES, null)
+        set(value) = getPrefs().edit().putString(KEY_REPAYMENT_ALARM_CODES, value).apply()
+
+    var localPinLockInvoiceNumber: String?
+        get() = getPrefs().getString(KEY_LOCAL_PIN_LOCK_INVOICE, null)
+        set(value) = getPrefs().edit().putString(KEY_LOCAL_PIN_LOCK_INVOICE, value).apply()
 
     fun clear() = getPrefs().edit().clear().apply()
 

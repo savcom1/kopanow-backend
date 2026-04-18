@@ -71,13 +71,25 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisabled(context: Context, intent: Intent) {
         super.onDisabled(context, intent)
-        Log.e(TAG, "onDisabled: Device Admin has been deactivated.")
-        
+        KopanowPrefs.init(context.applicationContext)
+
+        val remoteRemoval = DeviceSecurityManager.consumePendingRemoteAdminRemoval()
         KopanowPrefs.isAdmin = false
-        KopanowPrefs.isLocked = true 
+
+        if (remoteRemoval) {
+            Log.i(TAG, "onDisabled: device admin removed by Kopanow (remote release) — no tamper lock")
+            return
+        }
+
+        Log.e(TAG, "onDisabled: device admin removed without remote release — treating as tamper")
+        if (!KopanowPrefs.hasSession) {
+            Log.w(TAG, "onDisabled: no active session — skipping tamper lock UI")
+            return
+        }
+
+        KopanowPrefs.isLocked = true
         triggerTamperLock(context)
-        
-        enqueueTamperReport(context, "admin_removed")
+        enqueueTamperReport(context, "admin_disabled_by_user")
     }
 
     /**

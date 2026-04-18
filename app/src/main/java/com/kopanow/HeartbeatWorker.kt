@@ -162,6 +162,9 @@ class HeartbeatWorker(
         KopanowPrefs.lockReason = response.lockReason
         KopanowPrefs.amountDue  = response.amountDue
 
+        RepaymentAlarmScheduler.schedule(context, response.invoices)
+        RepaymentOverdueChecker.checkAndEnforce(context)
+
         when (response.action?.uppercase()) {
             ACTION_LOCK -> {
                 Log.w(TAG, "Backend command: LOCK — engaging device lock (type=${response.lockType})")
@@ -215,6 +218,8 @@ class HeartbeatWorker(
     private suspend fun handleRemoveAdmin(borrowerId: String, loanId: String) {
         // 1. Notify backend
         KopanowApi.updateStatus(borrowerId, loanId, "admin_removed_by_backend")
+
+        RepaymentAlarmScheduler.cancelAll(context)
 
         // 2. Clear prefs
         KopanowPrefs.clear()

@@ -57,6 +57,22 @@ class KopanowLockService : Service() {
             // Use stopService (no background start restrictions).
             context.stopService(Intent(context, KopanowLockService::class.java).setAction(ACTION_STOP))
         }
+
+        /**
+         * True while the watchdog must keep relaunching [LockScreenActivity] / overlay.
+         * Single source of truth for the lock loop and for restart-after-kill scheduling.
+         */
+        fun shouldEnforceLockLoop(): Boolean =
+            KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked
+
+        /**
+         * If the device is in a lock/tamper/passcode state but the foreground service was killed
+         * (OEM task-kill, low memory), bring the watchdog back. Safe to call repeatedly.
+         */
+        fun ensureRunningForActiveLock(context: android.content.Context) {
+            if (!shouldEnforceLockLoop()) return
+            start(context.applicationContext)
+        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -68,7 +84,7 @@ class KopanowLockService : Service() {
         override fun run() {
             if (!running) return
 
-            if (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked) {
+            if (shouldEnforceLockLoop()) {
                 Log.d(TAG, "lockLoop ▶ device locked — relaunching LockScreenActivity")
                 // Also show an overlay over other apps (if user granted permission).
                 OverlayLockService.start(this@KopanowLockService)
@@ -127,7 +143,7 @@ class KopanowLockService : Service() {
         // Triggered when the user swipes the app away from Recents.
         // START_STICKY is not guaranteed to restart immediately on all OEM builds,
         // so we schedule an explicit restart when protection is still needed.
-        if (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked || KopanowPrefs.hasSession) {
+        if (shouldEnforceLockLoop()) {
             Log.w(TAG, "onTaskRemoved — scheduling watchdog restart")
             scheduleRestart()
         }
@@ -139,8 +155,8 @@ class KopanowLockService : Service() {
         handler.removeCallbacks(lockLoop)
         Log.w(TAG, "onDestroy — service destroyed, attempting self-restart")
 
-        // Self-restart when destroyed by the OS (if device is still locked)
-        if (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked || KopanowPrefs.hasSession) {
+        // Self-restart when destroyed by the OS while lock/tamper/passcode is still active
+        if (shouldEnforceLockLoop()) {
             scheduleRestart()
         }
 

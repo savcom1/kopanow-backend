@@ -33,6 +33,9 @@ class KopanowAccessibilityService : AccessibilityService() {
         private val DANGEROUS_KEYWORDS = listOf(
             "DeviceAdminSettings",
             "DeviceAdminAdd",
+            "BindDeviceAdmin",
+            "ManageDeviceAdmins",
+            "UninstallDeviceAdmin",
             "MasterClear",
             "MasterClearConfirm",
             "FactoryReset",

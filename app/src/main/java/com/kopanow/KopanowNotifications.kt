@@ -16,6 +16,8 @@ import androidx.core.content.ContextCompat
 object KopanowNotifications {
 
     const val CHANNEL_ALERTS = "kopanow_alerts"
+    /** Local repayment reminders (AlarmManager) — works offline. */
+    const val CHANNEL_REPAYMENT = "kopanow_repayment_local"
 
     const val NOTIF_ID_LOCK_COMMAND = 9101
     const val NOTIF_ID_UNLOCK_COMMAND = 9102
@@ -44,6 +46,48 @@ object KopanowNotifications {
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
         nm.createNotificationChannel(ch)
+    }
+
+    fun ensureRepaymentChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val ch = NotificationChannel(
+            CHANNEL_REPAYMENT,
+            "Repayment reminders",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Weekly loan installment reminders (local, offline-capable)"
+            enableVibration(true)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        }
+        nm.createNotificationChannel(ch)
+    }
+
+    /**
+     * Local repayment reminder (not FCM).
+     */
+    fun showRepaymentReminder(
+        context: Context,
+        notificationId: Int,
+        title: String,
+        text: String,
+        contentIntent: PendingIntent?
+    ) {
+        if (!canPostNotifications(context)) return
+        ensureRepaymentChannel(context)
+        val appCtx = context.applicationContext
+        val builder = NotificationCompat.Builder(appCtx, CHANNEL_REPAYMENT)
+            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+        contentIntent?.let { builder.setContentIntent(it) }
+        val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(notificationId, builder.build())
     }
 
     /**

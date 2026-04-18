@@ -40,7 +40,19 @@ data class HeartbeatResponse(
     @SerializedName("lock_type")   val lockType: String?,
     @SerializedName("lock_reason") val lockReason: String?,
     @SerializedName("amount_due")  val amountDue: String?,
-    @SerializedName("message")     val message: String?
+    @SerializedName("message")     val message: String?,
+    /** Weekly installment invoices (offline repayment reminders + PIN lock scheduling). */
+    @SerializedName("invoices")     val invoices: List<LoanInvoiceItem>? = null
+)
+
+data class LoanInvoiceItem(
+    @SerializedName("invoice_number") val invoiceNumber: String,
+    @SerializedName("installment_index") val installmentIndex: Int,
+    @SerializedName("borrower_name") val borrowerName: String?,
+    @SerializedName("amount_due") val amountDue: Double,
+    @SerializedName("due_date") val dueDate: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("paid_at") val paidAt: String?
 )
 
 data class RegisterDeviceRequest(
@@ -147,6 +159,10 @@ data class LoanRequest(
     @SerializedName("region") val region: String,
     @SerializedName("address") val address: String,
     @SerializedName("amount_tzs") val amountTzs: Long,
+    /** If null, backend defaults (e.g. 125% of principal). */
+    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long? = null,
+    /** Weekly installment count (default 5). */
+    @SerializedName("installment_weeks") val installmentWeeks: Int? = null,
     @SerializedName("tenor_days") val tenorDays: Int,
     @SerializedName("purpose") val purpose: String,
     @SerializedName("timestamp") val timestamp: Long = System.currentTimeMillis(),

@@ -111,6 +111,8 @@ class LockScreenActivity : AppCompatActivity() {
         val locked   = KopanowPrefs.isLocked
         val passcode = PasscodeManager.hasActivePasscode()
         if (!locked && !passcode) { safelyDismiss(); return }
+        // If the OS killed the foreground watchdog, bring it back so the lock loop never stays dead.
+        KopanowLockService.ensureRunningForActiveLock(this)
         hideSystemBars()
         if (locked) pollHandler.post(pollRunnable)
     }
@@ -524,6 +526,15 @@ class LockScreenActivity : AppCompatActivity() {
     private fun checkLockStateFromBackend(force: Boolean = false) {
         val bId = KopanowPrefs.borrowerId ?: return
         val lId = KopanowPrefs.loanId     ?: return
+
+        // FCM UNLOCK / REMOVE_ADMIN already cleared lock flags — dismiss without racing the heartbeat API.
+        if (force && !KopanowPrefs.isLocked && !PasscodeManager.hasActivePasscode()) {
+            activityScope.launch(Dispatchers.Main) {
+                safelyDismiss()
+            }
+            return
+        }
+
         activityScope.launch {
             try {
                 val req = HeartbeatRequest(
