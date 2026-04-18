@@ -142,3 +142,28 @@ CREATE TABLE IF NOT EXISTS tamper_logs (
 CREATE INDEX IF NOT EXISTS idx_tamper_logs_borrower ON tamper_logs (borrower_id, loan_id);
 CREATE INDEX IF NOT EXISTS idx_tamper_logs_severity ON tamper_logs (severity);
 CREATE INDEX IF NOT EXISTS idx_tamper_logs_reviewed ON tamper_logs (reviewed);
+
+
+-- ── Notifications Log ─────────────────────────────────────────────
+-- Audit trail of every SMS and FCM notification ever dispatched.
+-- Used for deduplication (same event_type won't fire twice per day)
+-- and admin visibility into the messaging pipeline.
+CREATE TABLE IF NOT EXISTS notifications_log (
+  id           UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  borrower_id  TEXT        NOT NULL,
+  loan_id      TEXT        NOT NULL,
+  channel      TEXT        NOT NULL CHECK (channel IN ('sms', 'fcm', 'both')),
+  event_type   TEXT        NOT NULL,
+  phone        TEXT,
+  message      TEXT,
+  status       TEXT        NOT NULL DEFAULT 'sent'
+                 CHECK (status IN ('sent', 'failed', 'skipped')),
+  error        TEXT,
+  days_state   INTEGER,    -- negative = days before due, positive = days overdue
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notif_log_borrower ON notifications_log (borrower_id, loan_id);
+CREATE INDEX IF NOT EXISTS idx_notif_log_event    ON notifications_log (event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_notif_log_status   ON notifications_log (status);
+

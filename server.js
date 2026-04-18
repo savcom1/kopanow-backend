@@ -52,6 +52,9 @@ const paymentRoutes   = require('./routes/payment-reference');
 const adminRoutes     = require('./routes/admin');
 const pinRoutes       = require('./routes/pin');
 const provisionRoutes = require('./routes/provision');
+const loanRoutes      = require('./routes/loan');
+const notifyRoutes    = require('./routes/notify');
+const mpesaRoutes     = require('./routes/mpesa');
 const { startPaymentScheduler } = require('./cron/jobs');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +71,9 @@ app.use('/api/payment',   paymentRoutes);
 app.use('/api/admin',     adminRoutes);
 app.use('/api/pin',       pinRoutes);
 app.use('/api/provision', provisionRoutes);
+app.use('/api/loan',      loanRoutes);
+app.use('/api/notify',    notifyRoutes);
+app.use('/api/mpesa',     mpesaRoutes);
 
 // Serve APK for QR-code provisioning downloads
 // Place the signed APK at ./public/kopanow.apk  OR set APK_DOWNLOAD_URL to an external URL
@@ -90,7 +96,7 @@ app.get('/', (_req, res) => res.json({
   status:  'running',
   admin:   '/admin',
   health:  '/health',
-  api:     '/api/device | /api/admin | /api/payment | /api/pin | /api/provision',
+  api:     '/api/device (enrollment-check, register, …) | /api/admin | /api/payment | /api/mpesa | …',
   provision: '/admin/provision.html'
 }));
 
@@ -148,8 +154,9 @@ async function startServer() {
     console.log(`[server] Listening on port ${PORT}`);
     console.log(`[server] Admin UI  → http://localhost:${PORT}/admin`);
     console.log(`[server] Health    → http://localhost:${PORT}/health`);
-    console.log(`[server] Device API:  /api/device/{register,heartbeat,tamper,status,fcm-token}`);
+    console.log(`[server] Device API:  /api/device/{enrollment-check,register,heartbeat,tamper,status,fcm-token}`);
     console.log(`[server] Payment API: /api/payment/{submit,status,verify/:id,reject/:id,pending}`);
+    console.log(`[server] AzamPay API:   POST /api/mpesa/stk-push`);
     console.log(`[server] Admin API:   /api/admin/{devices,loans,tamper-logs,command}`);
     console.log(`[server] PIN API:     /api/pin/{set,clear,verify}`);
     startPaymentScheduler();

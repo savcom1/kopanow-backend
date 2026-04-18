@@ -137,6 +137,60 @@ const sendSetSystemPin = (token) =>
 const sendClearSystemPin = (token) =>
   sendDeviceCommand(token, COMMANDS.CLEAR_SYSTEM_PIN);
 
+// ── Visible push notification (shows alert banner on device) ─────────────────
+
+/**
+ * Send a VISIBLE push notification (alert banner + sound).
+ * Unlike sendDeviceCommand (data-only), this shows a notification in the
+ * system tray even when the app is killed — handled by the Android system directly.
+ *
+ * @param {string} token      - Device FCM registration token
+ * @param {string} title      - Notification title
+ * @param {string} body       - Notification body text
+ * @param {Object} [extra]    - Optional extra data key-value pairs (e.g. { event_type: 'overdue_3d' })
+ */
+async function sendNotificationMessage(token, title, body, extra = {}) {
+  if (!token) {
+    return { success: false, error: 'No FCM token' };
+  }
+  if (token.length < 100) {
+    console.log(`[FCM:push:mock] TO=${token} TITLE="${title}" BODY="${body}"`);
+    return { success: true, mock: true };
+  }
+  const app = getApp();
+  if (!app) {
+    return { success: false, error: 'Firebase not initialised' };
+  }
+  const data = { notification_type: 'LOAN_ALERT' };
+  for (const [k, v] of Object.entries(extra)) {
+    if (v !== undefined && v !== null) data[k] = String(v);
+  }
+  try {
+    const messageId = await admin.messaging().send({
+      token,
+      notification: { title, body },
+      data,
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'kopanow_loan_alerts',
+          sound: 'default',
+          priority: 'high',
+          defaultSound: true,
+        }
+      }
+    });
+    console.log(`[FCM:push] "${title}" → token=${token.slice(0, 12)}… | msgId=${messageId}`);
+    return { success: true, messageId };
+  } catch (err) {
+    console.error('[FCM:push] sendNotificationMessage failed:', err.message);
+    const isStale =
+      err.code === 'messaging/registration-token-not-registered' ||
+      err.code === 'messaging/invalid-registration-token';
+    return { success: false, error: err.message, staleToken: isStale };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -147,5 +201,6 @@ module.exports = {
   sendRemoveAdminCommand,
   sendHeartbeatRequest,
   sendSetSystemPin,
-  sendClearSystemPin
+  sendClearSystemPin,
+  sendNotificationMessage,
 };

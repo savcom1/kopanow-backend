@@ -13,6 +13,72 @@ function daysOverdue(nextDueDate) {
   return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
 }
 
+/**
+ * One physical device (device_id) may only be linked to a single Kopanow enrollment
+ * (borrower_id + loan_id). Re-syncing the same enrollment is allowed.
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+async function assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id) {
+  const id = device_id != null ? String(device_id).trim() : '';
+  if (!id) {
+    return { ok: false, reason: 'Missing device identifier — cannot verify enrollment.' };
+  }
+  if (!borrower_id || !loan_id) {
+    return { ok: false, reason: 'borrower_id and loan_id are required.' };
+  }
+
+  const { data: rows, error } = await supabase
+    .from('devices')
+    .select('borrower_id, loan_id')
+    .eq('device_id', id);
+
+  if (error) throw error;
+
+  const conflict = (rows || []).find(
+    (r) => r.borrower_id !== borrower_id || r.loan_id !== loan_id
+  );
+  if (conflict) {
+    console.warn(
+      `[enrollment] BLOCK device_id=${id} already linked to borrower=${conflict.borrower_id} loan=${conflict.loan_id}`
+    );
+    return {
+      ok: false,
+      reason:
+        'This device is already enrolled in Kopanow under another loan. One device cannot be used for two loans.',
+    };
+  }
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/device/enrollment-check
+//
+// Call from the app **before** showing the device-admin screen so the user is not
+// asked for admin if Supabase already has this device_id on another loan.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/enrollment-check', async (req, res) => {
+  try {
+    const { device_id, borrower_id, loan_id } = req.body || {};
+    const result = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
+    if (!result.ok) {
+      return res.json({
+        success: true,
+        allowed: false,
+        reason: result.reason,
+      });
+    }
+    return res.json({ success: true, allowed: true });
+  } catch (err) {
+    console.error('[enrollment-check]', err.message);
+    return res.status(500).json({
+      success: false,
+      allowed: false,
+      reason: 'Server error while checking enrollment',
+    });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/register
 // Called by EnrollmentManager after device admin is granted.
@@ -21,7 +87,6 @@ router.post('/register', async (req, res) => {
   try {
     const {
       borrower_id, loan_id, fcm_token, device_model, device_id, mpesa_phone,
-      // Rich telemetry fields sent by the expanded RegisterDeviceRequest
       manufacturer, brand, android_version, sdk_version,
       screen_density, screen_width_dp, screen_height_dp,
       battery_pct, is_rooted, enrolled_at
@@ -29,6 +94,11 @@ router.post('/register', async (req, res) => {
 
     if (!borrower_id || !loan_id) {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
+    }
+
+    const enrollment = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
+    if (!enrollment.ok) {
+      return res.status(403).json({ success: false, error: enrollment.reason });
     }
 
     // Bundle all extra device info into a JSONB object
@@ -58,7 +128,7 @@ router.post('/register', async (req, res) => {
         mpesa_phone:  mpesa_phone  || null,
         device_info,
         status:       'registered',
-        last_seen:    now,          // ← ensures new device appears at top of admin panel
+        last_seen:    now,
         updated_at:   now
       }, { onConflict: 'borrower_id,loan_id' })
       .select()
@@ -71,7 +141,7 @@ router.post('/register', async (req, res) => {
       .update({ device_status: 'registered', updated_at: new Date().toISOString() })
       .eq('loan_id', loan_id);
 
-    console.log(`[register] borrower=${borrower_id} model=${device_model} manufacturer=${manufacturer} android=${android_version} battery=${battery_pct}%`);
+    console.log(`[register] borrower=${borrower_id} model=${device_model} registered successfully`);
     return res.json({
       success: true,
       message: 'Device registered',
@@ -87,7 +157,6 @@ router.post('/register', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/heartbeat
-// Core security endpoint: Scenario 3 (fingerprint check) + Scenario 4 (safe mode).
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/heartbeat', async (req, res) => {
   try {
@@ -96,7 +165,6 @@ router.post('/heartbeat', async (req, res) => {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
     }
 
-    // Fetch current device record
     const { data: device, error: devErr } = await supabase
       .from('devices')
       .select('*')
@@ -115,13 +183,11 @@ router.post('/heartbeat', async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    // ── Scenario 3: device_id mismatch ──────────────────────────────────────
     if (device.device_id && device_id && device.device_id !== device_id) {
-      console.warn(`[heartbeat] S3 MISMATCH: borrower=${borrower_id} stored=${device.device_id} got=${device_id}`);
       updates.is_locked = true;
       updates.lock_reason = 'Device fingerprint mismatch — possible SIM swap / cloning';
       updates.status = 'locked';
-      action = 'LOCK';   // Android HeartbeatWorker only recognises LOCK / UNLOCK / REMOVE_ADMIN
+      action = 'LOCK';
 
       if (device.fcm_token) await sendLockCommand(device.fcm_token, updates.lock_reason, device.amount_due, 'TAMPER');
       await logTamper(borrower_id, loan_id, EVENT_TYPES.DEVICE_MISMATCH, {
@@ -129,42 +195,33 @@ router.post('/heartbeat', async (req, res) => {
         detail: `Stored: ${device.device_id} | Received: ${device_id}`
       });
     }
-    // ── Scenario 4: safe mode boot ───────────────────────────────────────────
     else if (is_safe_mode) {
-      console.warn(`[heartbeat] S4 SAFE_MODE: borrower=${borrower_id}`);
       updates.is_locked = true;
       updates.lock_reason = 'Safe mode detected — possible bypass attempt';
       updates.status = 'locked';
-      action = 'LOCK';   // Android HeartbeatWorker only recognises LOCK / UNLOCK / REMOVE_ADMIN
+      action = 'LOCK';
 
       if (device.fcm_token) await sendLockCommand(device.fcm_token, updates.lock_reason, device.amount_due, 'TAMPER');
       await logTamper(borrower_id, loan_id, EVENT_TYPES.SAFE_MODE_DETECTED, {
         source: 'heartbeat', device_id, auto_action: 'LOCK_DEVICE'
       });
     }
-    // ── Silent DPC removal ───────────────────────────────────────────────────
     else if (dpc_active === false && device.status !== 'admin_removed') {
-      console.warn(`[heartbeat] Silent DPC removal: borrower=${borrower_id}`);
       updates.status = 'suspended';
       await logTamper(borrower_id, loan_id, EVENT_TYPES.ADMIN_SILENT_REMOVE, {
         source: 'heartbeat', device_id, detail: 'DPC reported inactive but no REMOVE_ADMIN command sent'
       });
     }
-    // ── Healthy heartbeat: promote 'registered' → 'active' ──────────────────
     else if (dpc_active && device.status === 'registered') {
       updates.status = 'active';
-      console.log(`[heartbeat] Status promoted: registered → active for borrower=${borrower_id}`);
     }
 
-    // Persist heartbeat data
     await supabase.from('devices').update(updates).eq('id', device.id);
 
-    // Also store device_id on first heartbeat if not already set
     if (!device.device_id && device_id) {
       await supabase.from('devices').update({ device_id }).eq('id', device.id);
     }
 
-    // Derive lock_type for Android: explicit tamper action = TAMPER, else check lock_reason
     const isTamper = action === 'TAMPER_LOCK' ||
       (device.is_locked && device.lock_reason &&
         (device.lock_reason.includes('mismatch') ||
@@ -191,7 +248,6 @@ router.post('/heartbeat', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/tamper
-// Called by TamperReportWorker for on-device detected events.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/tamper', async (req, res) => {
   try {
@@ -210,7 +266,6 @@ router.post('/tamper', async (req, res) => {
     let action = null;
 
     if (event_type === EVENT_TYPES.ADMIN_REVOKED && device && !device.is_locked) {
-      // Immediately re-lock on admin removal
       await supabase.from('devices').update({
         is_locked: true, status: 'locked',
         lock_reason: 'Device admin was manually removed',
@@ -240,7 +295,6 @@ router.post('/tamper', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/status
-// Device acknowledges a status change.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/status', async (req, res) => {
   try {
@@ -267,7 +321,6 @@ router.post('/status', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/fcm-token
-// Called when KopanowFCMService.onNewToken() fires.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/fcm-token', async (req, res) => {
   try {
@@ -289,7 +342,6 @@ router.post('/fcm-token', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/device/details
-// Called by KopanowApi.getLoanDetails() to show balance/status on MainActivity.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/details', async (req, res) => {
   try {
@@ -326,4 +378,3 @@ router.get('/details', async (req, res) => {
 });
 
 module.exports = router;
-
