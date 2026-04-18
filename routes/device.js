@@ -143,6 +143,8 @@ router.post('/heartbeat', async (req, res) => {
     const {
       borrower_id, loan_id, device_id, dpc_active, is_safe_mode, battery_pct, timestamp,
       mdm_compliance: mdmCompliance,
+      /** When false, device reports no lock UI / passcode — reconcile stale DB `is_locked` + loan row. */
+      app_lock_active: appLockActive,
     } = req.body;
     if (!borrower_id || !loan_id) {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
@@ -213,6 +215,28 @@ router.post('/heartbeat', async (req, res) => {
       updates.status = 'active';
     }
 
+    // Reconcile: DB often stays `locked` after FCM unlock / Clear PIN because only passcode columns were cleared.
+    // Trust the device when it reports no active lock and this request did not force a tamper lock.
+    const serverForcedLock =
+      (device.device_id && device_id && device.device_id !== device_id) || !!is_safe_mode;
+
+    if (
+      !serverForcedLock &&
+      appLockActive === false &&
+      dpc_active !== false &&
+      device.status !== 'admin_removed'
+    ) {
+      updates.is_locked = false;
+      updates.lock_reason = null;
+      if (device.status === 'locked') {
+        updates.status = 'active';
+      }
+      await supabase.from('loans').update({
+        device_status: 'active',
+        updated_at: new Date().toISOString(),
+      }).eq('loan_id', loan_id);
+    }
+
     await supabase.from('devices').update(updates).eq('id', device.id);
 
     if (!device.device_id && device_id) {
@@ -227,22 +251,28 @@ router.post('/heartbeat', async (req, res) => {
       .eq('loan_id', loan_id)
       .order('installment_index', { ascending: true });
 
+    const { data: rowAfter } = await supabase
+      .from('devices')
+      .select('is_locked, lock_reason, amount_due')
+      .eq('id', device.id)
+      .maybeSingle();
+
+    const lockedOut = rowAfter?.is_locked ?? false;
+
     const isTamper = action === 'TAMPER_LOCK' ||
-      (device.is_locked && device.lock_reason &&
-        (device.lock_reason.includes('mismatch') ||
-          device.lock_reason.includes('Safe mode') ||
-          device.lock_reason.includes('tampering') ||
-          device.lock_reason.includes('Unauthorized')));
+      (lockedOut && rowAfter?.lock_reason &&
+        (rowAfter.lock_reason.includes('mismatch') ||
+          rowAfter.lock_reason.includes('Safe mode') ||
+          rowAfter.lock_reason.includes('tampering') ||
+          rowAfter.lock_reason.includes('Unauthorized')));
 
     return res.json({
       success: true,
       action,
-      locked: updates.is_locked ?? device.is_locked,
-      lock_type: (updates.is_locked ?? device.is_locked)
-        ? (isTamper ? 'TAMPER' : 'PAYMENT')
-        : null,
-      lock_reason: updates.lock_reason ?? device.lock_reason,
-      amount_due: device.amount_due,
+      locked: lockedOut,
+      lock_type: lockedOut ? (isTamper ? 'TAMPER' : 'PAYMENT') : null,
+      lock_reason: rowAfter?.lock_reason ?? null,
+      amount_due: rowAfter?.amount_due ?? null,
       invoices: invoices || [],
       message: action ? `Action: ${action}` : 'Heartbeat recorded'
     });

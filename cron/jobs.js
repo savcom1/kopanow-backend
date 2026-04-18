@@ -2,7 +2,7 @@
 const cron     = require('node-cron');
 const supabase = require('../helpers/supabase');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
-const { sendLockCommand, sendHeartbeatRequest } = require('../helpers/fcm');
+const { sendHeartbeatRequest, sendSetSystemPin } = require('../helpers/fcm');
 const { notify, EVENT } = require('../helpers/notify');
 const { markOverdueInvoices } = require('../helpers/loanInvoices');
 
@@ -213,22 +213,31 @@ async function runOverdueEscalation() {
         escalated++;
       }
 
-      // ── Day 7: LOCK ───────────────────────────────────────────────────────
+      // ── Day 7: PIN lock (same path as admin SET_SYSTEM_PIN / Clear PIN) ───
       if (daysLate >= 7 && !device?.is_locked) {
         const lockReason = `${daysLate} days overdue — Outstanding: ${amount}`;
+        const now = new Date().toISOString();
 
-        // Send FCM lock command
+        // FCM: device runs FcmPinManager.handleSetSystemPin — app PIN + watchdog loop
         if (device?.fcm_token) {
-          await sendLockCommand(device.fcm_token, lockReason, amount, 'PAYMENT');
+          await sendSetSystemPin(device.fcm_token, {
+            lock_reason: lockReason,
+            amount_due:  amount,
+            lock_type:   'PAYMENT',
+          });
         }
 
-        // Update device + loan in DB
+        // Update device + loan in DB (mirror /api/pin/set passcode_pending + lock state)
         await supabase.from('devices').update({
-          is_locked:   true,
-          status:      'locked',
-          lock_reason: lockReason,
-          amount_due:  amount,
-          updated_at:  new Date().toISOString(),
+          is_locked:       true,
+          status:          'locked',
+          lock_reason:     lockReason,
+          amount_due:      amount,
+          passcode_active: true,
+          passcode_hash:   null,
+          passcode_set_at: now,
+          system_pin:      null,
+          updated_at:      now,
         }).eq('id', device.id);
 
         await supabase.from('loans').update({
@@ -239,8 +248,8 @@ async function runOverdueEscalation() {
 
         await logTamper(loan.borrower_id, loan.loan_id, EVENT_TYPES.LOCK_SENT, {
           source: 'cron',
-          detail: `Day ${daysLate} overdue — auto-lock triggered`,
-          auto_action: 'LOCK_DEVICE',
+          detail: `Day ${daysLate} overdue — auto PIN lock (SET_SYSTEM_PIN)`,
+          auto_action: 'SET_SYSTEM_PIN',
         });
 
         // Also send SMS + push about the lock

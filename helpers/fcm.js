@@ -130,8 +130,8 @@ const sendHeartbeatRequest = (token) =>
   sendDeviceCommand(token, COMMANDS.HEARTBEAT_REQUEST);
 
 /** Tell the device to generate a random PIN and set it on the real system lockscreen. */
-const sendSetSystemPin = (token) =>
-  sendDeviceCommand(token, COMMANDS.SET_SYSTEM_PIN);
+const sendSetSystemPin = (token, extra = {}) =>
+  sendDeviceCommand(token, COMMANDS.SET_SYSTEM_PIN, extra);
 
 /** Tell the device to clear the Kopanow-set system lockscreen PIN. */
 const sendClearSystemPin = (token) =>

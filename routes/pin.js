@@ -193,7 +193,7 @@ router.post('/clear', async (req, res) => {
 
     const { data: device, error } = await supabase
       .from('devices')
-      .select('id, fcm_token, borrower_id, loan_id')
+      .select('id, fcm_token, borrower_id, loan_id, status')
       .eq('id', device_id)
       .maybeSingle();
 
@@ -205,14 +205,29 @@ router.post('/clear', async (req, res) => {
 
     const fcmResult = await sendClearSystemPin(device.fcm_token);
 
-    // Clear DB regardless of FCM result (next heartbeat will sync)
+    // Clear DB regardless of FCM result (next heartbeat will sync).
+    // Also clear lock flags so admin UI matches — pin/clear previously left `is_locked` / `status=locked` stale.
     const now = new Date().toISOString();
-    await supabase.from('devices').update({
+    const wasLockedRow = device.status === 'locked';
+    const deviceUpdate = {
       passcode_hash:   null,
       passcode_active: false,
       system_pin:      null,
-      updated_at:      now
-    }).eq('id', device.id);
+      is_locked:       false,
+      lock_reason:     null,
+      updated_at:      now,
+    };
+    if (wasLockedRow) {
+      deviceUpdate.status = 'active';
+    }
+    await supabase.from('devices').update(deviceUpdate).eq('id', device.id);
+
+    if (wasLockedRow) {
+      await supabase.from('loans').update({
+        device_status: 'active',
+        updated_at:    now,
+      }).eq('loan_id', device.loan_id);
+    }
 
     // Audit log
     supabase.from('tamper_logs').insert({
