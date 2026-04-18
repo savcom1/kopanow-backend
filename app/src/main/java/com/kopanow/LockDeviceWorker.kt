@@ -68,7 +68,7 @@ class LockDeviceWorker(
             frpSeeded  = KopanowPrefs.frpSeeded,
             timestamp  = System.currentTimeMillis(),
             mdmCompliance = null,
-            appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
+            appLockActive = KopanowPrefs.appLockActiveForBackend,
         )
         val heartbeatResult = KopanowApi.heartbeat(heartbeatRequest)
 

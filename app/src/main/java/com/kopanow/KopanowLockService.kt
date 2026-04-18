@@ -65,7 +65,10 @@ class KopanowLockService : Service() {
          * Includes [PasscodeManager.hasActivePasscode] so prefs cannot desync from real PIN state.
          */
         fun shouldEnforceLockLoop(): Boolean =
-            KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked || PasscodeManager.hasActivePasscode()
+            KopanowPrefs.isLocked ||
+                KopanowPrefs.isPasscodeLocked ||
+                PasscodeManager.hasActivePasscode() ||
+                KopanowPrefs.isTamperLock
 
         /**
          * If the device is in a lock/tamper/passcode state but the foreground service was killed

@@ -308,7 +308,7 @@ class MainActivity : AppCompatActivity() {
                 frpSeeded = KopanowPrefs.frpSeeded,
                 timestamp = System.currentTimeMillis(),
                 mdmCompliance = MdmComplianceCollector.collect(this@MainActivity),
-                appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
+                appLockActive = KopanowPrefs.appLockActiveForBackend,
             )
             KopanowApi.heartbeat(request) // Silent check-in to update "Last Seen"
         }

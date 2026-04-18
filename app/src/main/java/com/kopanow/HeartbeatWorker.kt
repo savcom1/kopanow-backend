@@ -150,7 +150,7 @@ class HeartbeatWorker(
             frpSeeded  = KopanowPrefs.frpSeeded,
             timestamp  = System.currentTimeMillis(),
             mdmCompliance = compliance,
-            appLockActive = KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked,
+            appLockActive = KopanowPrefs.appLockActiveForBackend,
         )
 
         val result = KopanowApi.heartbeat(request)

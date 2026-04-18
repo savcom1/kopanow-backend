@@ -176,6 +176,14 @@ object KopanowPrefs {
 
     val isTamperLock: Boolean get() = lockType == LOCK_TYPE_TAMPER
 
+    /**
+     * True while any client-side lock UX is active (payment / tamper / passcode).
+     * Sent as [HeartbeatRequest.appLockActive] so the server does not clear `is_locked` while local
+     * tamper is active (same idea as [HeartbeatLockSync] + PIN session).
+     */
+    val appLockActiveForBackend: Boolean
+        get() = isLocked || isPasscodeLocked || isTamperLock
+
     val hasSession: Boolean
         get() = borrowerId != null && loanId != null
 

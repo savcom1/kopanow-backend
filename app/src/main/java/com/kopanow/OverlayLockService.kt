@@ -54,7 +54,8 @@ class OverlayLockService : Service() {
     private val loop = object : Runnable {
         override fun run() {
             try {
-                val shouldShow = (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked) && Settings.canDrawOverlays(this@OverlayLockService)
+                val shouldShow = (KopanowPrefs.isLocked || KopanowPrefs.isPasscodeLocked || KopanowPrefs.isTamperLock) &&
+                    Settings.canDrawOverlays(this@OverlayLockService)
                 if (shouldShow) {
                     KopanowLockService.ensureRunningForActiveLock(this@OverlayLockService)
                     ensureOverlayShown()
@@ -167,9 +168,9 @@ class OverlayLockService : Service() {
         }
         body.text = when {
             isPasscode -> getString(R.string.overlay_body_passcode_with_phone)
-            isTamper -> KopanowPrefs.lockReason ?: "Locked due to a security violation. Call 0744505529."
+            isTamper -> KopanowPrefs.lockReason ?: "Locked due to a security violation. Call 0664212529."
             else -> KopanowPrefs.lockReason
-                ?: "Please make a payment to unlock your device. Support: 0744505529."
+                ?: "Please make a payment to unlock your device. Support: 0664212529."
         }
     }
 
