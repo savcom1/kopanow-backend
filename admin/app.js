@@ -509,8 +509,8 @@ async function openModal(mongoId) {
     ['Status', statusBadge(d.status)],
     ['Locked', d.is_locked ? '🔒 Yes' : '🔓 No'],
     ['Passcode Active', d.passcode_active
-      ? '<span style="color:#f0a500;font-weight:600">🔑 Yes</span>'
-      : '<span style="color:#888">No</span>'],
+      ? '<span style="color:var(--amber);font-weight:600">🔑 Yes</span>'
+      : '<span style="color:var(--text-muted)">No</span>'],
     ['Lock Reason', esc(d.lock_reason) || '—'],
     ['Amount Due', esc(d.amount_due) || '—'],
     ['Last Seen', timeAgo(d.last_seen)],

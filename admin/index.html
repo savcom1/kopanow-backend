@@ -6,7 +6,7 @@
   <title>Kopanow Admin — Device Management</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -202,23 +202,21 @@
           <button class="btn btn-ghost"    id="cmd-heartbeat">Ping Heartbeat</button>
         </div>
 
-        <div class="command-title" style="margin-top:16px">System Lockscreen PIN</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:0 2px">
-          Generates a random PIN on the device and sets it as the real Android system lockscreen.
+        <div class="command-title" style="margin-top:16px">System lockscreen PIN</div>
+        <p class="modal-hint">
+          Generates a random PIN on the device and sets it as the real Android lockscreen.
           No custom UI — the borrower must enter it at the standard Android lock screen.
-        </div>
+        </p>
         <div class="command-row">
           <button class="btn btn-amber" id="cmd-set-pin">&#x1F511; Set System PIN</button>
           <button class="btn btn-ghost" id="cmd-clear-pin">&#x2715; Clear System PIN</button>
         </div>
 
         <!-- PIN display box — shown once after Set PIN, auto-clears after 60 s -->
-        <div id="pin-reveal-box" style="display:none;margin-top:12px;padding:14px 18px;
-             background:#1a1a2e;border:1px solid #f0a500;border-radius:10px;
-             text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:6px;letter-spacing:.08em">UNLOCK PIN — READ TO BORROWER</div>
-          <div id="pin-reveal-value" style="font-size:36px;font-weight:700;letter-spacing:.3em;color:#f0a500;font-family:monospace">——</div>
-          <div style="font-size:11px;color:#888;margin-top:6px">This PIN will be hidden in <span id="pin-countdown">60</span>s</div>
+        <div id="pin-reveal-box" class="pin-reveal-box" style="display:none">
+          <div class="pin-reveal-label">Unlock PIN — read to borrower</div>
+          <div id="pin-reveal-value" class="pin-reveal-value">——</div>
+          <div class="pin-reveal-meta">This PIN will be hidden in <span id="pin-countdown">60</span>s</div>
         </div>
 
         <div class="cmd-result" id="cmd-result"></div>
