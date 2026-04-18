@@ -30,6 +30,18 @@ object KopanowPrefs {
     private const val KEY_PASSCODE_HASH = "passcode_hash"
     private const val KEY_PASSCODE_LOCK = "passcode_locked"
 
+    // ── Registration / profile ───────────────────────────────────────────
+    private const val KEY_FULL_NAME     = "full_name"
+    private const val KEY_NATIONAL_ID   = "national_id"
+    private const val KEY_REGION        = "region"
+    private const val KEY_ADDRESS       = "address"
+
+    // ── Loan request ─────────────────────────────────────────────────────
+    private const val KEY_LOAN_REQ_AMOUNT  = "loan_req_amount"
+    private const val KEY_LOAN_REQ_TENOR   = "loan_req_tenor"
+    private const val KEY_LOAN_REQ_PURPOSE = "loan_req_purpose"
+    private const val KEY_LOAN_REQ_DONE    = "loan_req_done"
+
     private var prefs: SharedPreferences? = null
 
     /**
@@ -72,6 +84,38 @@ object KopanowPrefs {
     var phoneNumber: String?
         get() = getPrefs().getString(KEY_PHONE_NUMBER, null)
         set(value) = getPrefs().edit().putString(KEY_PHONE_NUMBER, value).apply()
+
+    var fullName: String?
+        get() = getPrefs().getString(KEY_FULL_NAME, null)
+        set(value) = getPrefs().edit().putString(KEY_FULL_NAME, value).apply()
+
+    var nationalId: String?
+        get() = getPrefs().getString(KEY_NATIONAL_ID, null)
+        set(value) = getPrefs().edit().putString(KEY_NATIONAL_ID, value).apply()
+
+    var region: String?
+        get() = getPrefs().getString(KEY_REGION, null)
+        set(value) = getPrefs().edit().putString(KEY_REGION, value).apply()
+
+    var address: String?
+        get() = getPrefs().getString(KEY_ADDRESS, null)
+        set(value) = getPrefs().edit().putString(KEY_ADDRESS, value).apply()
+
+    var requestedLoanAmountTzs: Long
+        get() = getPrefs().getLong(KEY_LOAN_REQ_AMOUNT, 0L)
+        set(value) = getPrefs().edit().putLong(KEY_LOAN_REQ_AMOUNT, value).apply()
+
+    var requestedLoanTenorDays: Int
+        get() = getPrefs().getInt(KEY_LOAN_REQ_TENOR, 0)
+        set(value) = getPrefs().edit().putInt(KEY_LOAN_REQ_TENOR, value).apply()
+
+    var requestedLoanPurpose: String?
+        get() = getPrefs().getString(KEY_LOAN_REQ_PURPOSE, null)
+        set(value) = getPrefs().edit().putString(KEY_LOAN_REQ_PURPOSE, value).apply()
+
+    var isLoanRequestSubmitted: Boolean
+        get() = getPrefs().getBoolean(KEY_LOAN_REQ_DONE, false)
+        set(value) = getPrefs().edit().putBoolean(KEY_LOAN_REQ_DONE, value).apply()
 
     var isAdmin: Boolean
         get() = getPrefs().getBoolean(KEY_IS_ADMIN, false)

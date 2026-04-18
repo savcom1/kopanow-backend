@@ -1,9 +1,15 @@
 package com.kopanow
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -31,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val PREF_FIRST_RUN_DONE = "first_run_done"
+        private const val PREF_OVERLAY_PROMPTED = "overlay_prompted"
     }
 
     private val activityJob   = SupervisorJob()
@@ -41,6 +48,15 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result: ActivityResult ->
         if (result.resultCode == Activity.RESULT_OK) onAdminGranted() else onAdminDenied()
+    }
+
+    /** Android 13+: required or local + foreground notifications are suppressed. */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {
+            KopanowLockService.start(this)
+        }
     }
 
     private lateinit var cardEnrollment: MaterialCardView
@@ -68,10 +84,24 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         if (KopanowPrefs.isLocked) {
+            // Ensure background watchdog + overlay remain active even if the UI is closed.
+            KopanowLockService.start(this)
+            OverlayLockService.start(this)
             goToLockScreen()
             return
         }
+
+        // Keep the watchdog alive even if the UI is closed/swiped away.
+        // This will show a persistent foreground notification while a session exists.
+        KopanowLockService.start(this)
 
         setContentView(R.layout.activity_main)
         bindViews()
@@ -90,6 +120,12 @@ class MainActivity : AppCompatActivity() {
         // WorkManager's UPDATE policy makes this idempotent — safe to call on every launch.
         // This ensures the job survives app updates and WorkManager resets.
         HeartbeatScheduler.schedule(this)
+
+        // Optional but recommended for OEM battery managers: ask once to ignore optimizations.
+        maybeRequestIgnoreBatteryOptimizations()
+
+        // Optional but required for "run over other apps": ask once for overlay permission.
+        maybeRequestOverlayPermission()
     }
 
     private fun bindViews() {
@@ -128,6 +164,20 @@ class MainActivity : AppCompatActivity() {
     private fun showEnrollmentPrompt() {
         cardEnrollment.visibility = View.VISIBLE
         cardDashboard.visibility = View.GONE
+
+        // Activation should only be available after a loan request is submitted.
+        if (!KopanowPrefs.isLoanRequestSubmitted) {
+            tvStatus.text = "Complete your loan request to continue. Activation will be enabled after submission."
+            btnEnroll.text = "Complete Loan Request"
+            btnEnroll.setOnClickListener {
+                startActivity(Intent(this, RegistrationActivity::class.java))
+            }
+            return
+        } else {
+            // restore default action
+            btnEnroll.text = "Activate Protection"
+            btnEnroll.setOnClickListener { triggerEnrollment() }
+        }
     }
 
     private fun showDashboard() {
@@ -183,11 +233,11 @@ class MainActivity : AppCompatActivity() {
     private fun initiatePayment() {
         val borrowerId = KopanowPrefs.borrowerId ?: return
         val loanId = KopanowPrefs.loanId ?: return
-        showToast("Initiating M-Pesa Payment...")
+        showToast("Initiating payment (AzamPay mobile money)…")
         activityScope.launch {
             val result = KopanowApi.initiateStkPush(borrowerId, loanId, 100L)
             withContext(Dispatchers.Main) {
-                if (result.success) showToast("STK Push Sent.") else showToast("Payment failed: ${result.error}")
+                if (result.success) showToast("Payment prompt sent — check your phone.") else showToast("Payment failed: ${result.error}")
             }
         }
     }
@@ -212,10 +262,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun triggerEnrollment() {
         activityScope.launch {
-            val eligibility = EnrollmentManager.checkDeviceEligibility(this@MainActivity)
+            val local = EnrollmentManager.checkDeviceEligibility(this@MainActivity)
+            if (!local.eligible) {
+                withContext(Dispatchers.Main) {
+                    showToast(local.reason ?: "Device not eligible")
+                }
+                return@launch
+            }
+            val server = EnrollmentManager.checkServerEnrollmentEligibility(this@MainActivity)
+            if (!server.eligible) {
+                withContext(Dispatchers.Main) {
+                    showToast(server.reason ?: "This device cannot be enrolled.")
+                }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                if (eligibility.eligible) EnrollmentManager.requestDeviceAdmin(this@MainActivity, adminLauncher)
-                else showToast(eligibility.reason ?: "Device not eligible")
+                EnrollmentManager.requestDeviceAdmin(this@MainActivity, adminLauncher)
             }
         }
     }
@@ -246,5 +308,51 @@ class MainActivity : AppCompatActivity() {
 
     private fun isFirstRunDone(): Boolean = getSharedPreferences("kopanow_prefs", MODE_PRIVATE).getBoolean(PREF_FIRST_RUN_DONE, false)
     private fun markFirstRunDone() = getSharedPreferences("kopanow_prefs", MODE_PRIVATE).edit().putBoolean(PREF_FIRST_RUN_DONE, true).apply()
+    private fun isOverlayPrompted(): Boolean = getSharedPreferences("kopanow_prefs", MODE_PRIVATE).getBoolean(PREF_OVERLAY_PROMPTED, false)
+    private fun markOverlayPrompted() = getSharedPreferences("kopanow_prefs", MODE_PRIVATE).edit().putBoolean(PREF_OVERLAY_PROMPTED, true).apply()
     private fun showToast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    private fun maybeRequestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (isFirstRunDone()) return
+
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) {
+            markFirstRunDone()
+            return
+        }
+
+        try {
+            // User-facing system dialog; user may deny — we still function, just less reliably on some OEMs.
+            startActivity(
+                Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        } catch (_: Exception) {
+            // Ignore; not all devices support the intent
+        } finally {
+            // Mark as done so we don't spam the prompt on every launch.
+            markFirstRunDone()
+        }
+    }
+
+    private fun maybeRequestOverlayPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (isOverlayPrompted()) return
+        if (Settings.canDrawOverlays(this)) {
+            markOverlayPrompted()
+            return
+        }
+        try {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        } catch (_: Exception) {
+        } finally {
+            markOverlayPrompted()
+        }
+    }
 }

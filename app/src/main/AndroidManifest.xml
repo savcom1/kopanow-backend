@@ -11,6 +11,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Optional but recommended: allow prompting user to exempt from battery optimizations -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Allow showing a lock overlay over other apps (user-granted in Settings). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Required for expedited WorkManager workers on Android 14+ (API 34) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Required for KopanowLockService (watchdog) on Android 14+ -->
@@ -21,6 +25,11 @@
     <!-- Detect when user opens Settings (usage monitor) -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Required by AlarmManager.setExactAndAllowWhileIdle() used in KopanowLockService restart (API 31+) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- USE_EXACT_ALARM is the API 33+ replacement (no user permission needed) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:name=".KopanowApplication"
@@ -124,6 +133,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="MDM device lock watchdog" />
         </service>
+
+        <!-- Full-screen overlay shown over other apps while locked (requires overlay permission). -->
+        <service
+            android:name=".OverlayLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false" />
 
         <!-- ── MDM Lite: Accessibility tamper shield ─────────────────── -->
         <!--   Detects when borrower opens Settings/Reset/Admin screens.  -->

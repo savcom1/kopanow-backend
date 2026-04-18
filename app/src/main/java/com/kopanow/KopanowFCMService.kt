@@ -1,5 +1,6 @@
 package com.kopanow
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -181,9 +182,32 @@ class KopanowFCMService : FirebaseMessagingService() {
         startActivity(lockIntent)
         Log.i(TAG, "LOCK_DEVICE: LockScreenActivity launched")
 
+        val tapPi = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, LockScreenActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        KopanowNotifications.showAlert(
+            this,
+            KopanowNotifications.NOTIF_ID_LOCK_COMMAND,
+            "Device locked",
+            lockReason ?: "Your device was locked by Kopanow Loan Services.",
+            tapPi
+        )
+
         // 4. Start MDM Lite foreground watchdog — persistent lock loop
         KopanowLockService.start(this)
         Log.i(TAG, "LOCK_DEVICE: foreground watchdog started")
+
+        // 5. Start overlay over other apps (if permission granted)
+        OverlayLockService.start(this)
 
         acknowledgeStatus("locked")
     }
@@ -214,6 +238,22 @@ class KopanowFCMService : FirebaseMessagingService() {
         }
         sendBroadcast(broadcast)
         Log.i(TAG, "UNLOCK_DEVICE: broadcast sent — action=$ACTION_UNLOCK_SCREEN")
+
+        val mainPi = PendingIntent.getActivity(
+            this,
+            1,
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        KopanowNotifications.showAlert(
+            this,
+            KopanowNotifications.NOTIF_ID_UNLOCK_COMMAND,
+            "Device unlocked",
+            "Your device lock has been released.",
+            mainPi
+        )
 
         acknowledgeStatus("unlocked")
     }

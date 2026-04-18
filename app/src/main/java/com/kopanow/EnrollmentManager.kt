@@ -54,6 +54,38 @@ object EnrollmentManager {
         return EligibilityResult(eligible = true)
     }
 
+    /**
+     * Supabase-backed check: [device_id] must not already be linked to another
+     * borrower/loan. Run **before** [requestDeviceAdmin] so we never prompt for admin
+     * when enrollment would be rejected after the fact.
+     */
+    suspend fun checkServerEnrollmentEligibility(context: Context): EligibilityResult {
+        val borrowerId = KopanowPrefs.borrowerId
+        val loanId = KopanowPrefs.loanId
+        if (borrowerId.isNullOrBlank() || loanId.isNullOrBlank()) {
+            return EligibilityResult(eligible = false, reason = "Loan session not configured.")
+        }
+        val deviceId = DeviceSecurityManager.getDeviceId(context)
+        val result = KopanowApi.checkEnrollmentEligibility(deviceId, borrowerId, loanId)
+        if (!result.success || result.data == null) {
+            return EligibilityResult(
+                eligible = false,
+                reason = result.error ?: "Could not verify device with Kopanow. Check your internet connection."
+            )
+        }
+        val body = result.data
+        if (!body.success) {
+            return EligibilityResult(false, reason = "Could not verify device with Kopanow.")
+        }
+        if (!body.allowed) {
+            return EligibilityResult(
+                eligible = false,
+                reason = body.reason ?: "This device cannot be enrolled."
+            )
+        }
+        return EligibilityResult(eligible = true)
+    }
+
     fun requestDeviceAdmin(context: Context, launcher: ActivityResultLauncher<Intent>) {
         val adminComponent = ComponentName(context, KopanowAdminReceiver::class.java)
         val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {

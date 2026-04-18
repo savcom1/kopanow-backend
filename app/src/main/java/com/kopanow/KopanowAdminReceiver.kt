@@ -93,6 +93,10 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         // 1. Immediate System Lock
         DeviceSecurityManager.lockDevice(context)
 
+        // 1b. Start persistent watchdog + overlay immediately (even if activity launch is blocked)
+        KopanowLockService.start(context.applicationContext)
+        OverlayLockService.start(context.applicationContext)
+
         // 2. Prepare Intent
         val lockIntent = Intent(context, LockScreenActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

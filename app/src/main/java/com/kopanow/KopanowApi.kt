@@ -67,6 +67,18 @@ data class RegisterDeviceResponse(
     @SerializedName("message") val message: String?
 )
 
+data class EnrollmentCheckRequest(
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("borrower_id") val borrowerId: String,
+    @SerializedName("loan_id") val loanId: String
+)
+
+data class EnrollmentCheckResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("allowed") val allowed: Boolean,
+    @SerializedName("reason") val reason: String? = null
+)
+
 data class TamperReportRequest(
     @SerializedName("borrower_id") val borrowerId: String,
     @SerializedName("loan_id") val loanId: String,
@@ -127,6 +139,26 @@ data class PaymentSubmission(
     @SerializedName("reviewer_note")  val reviewerNote: String?
 )
 
+data class LoanRequest(
+    @SerializedName("borrower_id") val borrowerId: String,
+    @SerializedName("phone") val phone: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("national_id") val nationalId: String,
+    @SerializedName("region") val region: String,
+    @SerializedName("address") val address: String,
+    @SerializedName("amount_tzs") val amountTzs: Long,
+    @SerializedName("tenor_days") val tenorDays: Int,
+    @SerializedName("purpose") val purpose: String,
+    @SerializedName("timestamp") val timestamp: Long = System.currentTimeMillis()
+)
+
+data class LoanRequestResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("message") val message: String?,
+    @SerializedName("borrower_id") val borrowerId: String?,
+    @SerializedName("loan_id") val loanId: String?
+)
+
 data class SystemPinReportRequest(
     @SerializedName("borrower_id") val borrowerId: String,
     @SerializedName("loan_id")     val loanId: String,
@@ -164,11 +196,23 @@ object KopanowApi {
 
     private const val TAG = "KopanowApi"
     
+    // ── Backend URL ──────────────────────────────────────────────────────────
+    // Always use the production Render URL for real devices.
+    // For emulator testing, override BASE_URL_OVERRIDE in local.properties → BuildConfig.
+    private const val PRODUCTION_URL = "https://kopanow-backend.onrender.com/api"
+    private const val EMULATOR_URL   = "http://10.0.2.2:3000/api"
+
     private val BASE_URL: String
-        get() = if (android.os.Build.PRODUCT.contains("sdk") || android.os.Build.MODEL.contains("Emulator")) {
-            "http://10.0.2.2:3000/api"
-        } else {
-            "https://kopanow-backend.onrender.com/api"
+        get() {
+            val isEmulator = android.os.Build.FINGERPRINT.startsWith("generic")
+                || android.os.Build.FINGERPRINT.startsWith("unknown")
+                || android.os.Build.MODEL.contains("google_sdk")
+                || android.os.Build.MODEL.contains("Emulator")
+                || android.os.Build.MODEL.contains("Android SDK built for x86")
+                || android.os.Build.MANUFACTURER.contains("Genymotion")
+                || (android.os.Build.BRAND.startsWith("generic") && android.os.Build.DEVICE.startsWith("generic"))
+                || android.os.Build.PRODUCT == "google_sdk"
+            return if (isEmulator) EMULATOR_URL else PRODUCTION_URL
         }
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
@@ -179,27 +223,41 @@ object KopanowApi {
             level = HttpLoggingInterceptor.Level.BODY
         }
         OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
     }
 
     private suspend fun <T> post(path: String, payload: Any, responseType: Class<T>): ApiResult<T> = withContext(Dispatchers.IO) {
+        val url = "$BASE_URL$path"
+        Log.d(TAG, "POST $url")
         try {
             val body = gson.toJson(payload).toRequestBody(JSON)
-            val request = Request.Builder().url("$BASE_URL$path").post(body).build()
+            val request = Request.Builder().url(url).post(body).build()
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "POST $url → ${response.code}: $responseBody")
             if (response.isSuccessful) {
                 ApiResult(success = true, data = gson.fromJson(responseBody, responseType))
             } else {
-                ApiResult(success = false, error = "HTTP ${response.code}: $responseBody")
+                // Try to parse {message} or {error} from body for a friendlier message
+                val errMsg = try {
+                    val obj = gson.fromJson(responseBody, Map::class.java)
+                    (obj["message"] ?: obj["error"])?.toString() ?: "HTTP ${response.code}"
+                } catch (_: Exception) { "HTTP ${response.code}" }
+                ApiResult(success = false, error = errMsg)
             }
+        } catch (e: java.net.ConnectException) {
+            Log.e(TAG, "POST $url — cannot connect", e)
+            ApiResult(success = false, error = "Cannot reach server. Check your internet connection.")
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "POST $url — timeout", e)
+            ApiResult(success = false, error = "Request timed out. Server may be waking up — please try again.")
         } catch (e: Exception) {
-            Log.e(TAG, "POST $path failed", e)
-            ApiResult(success = false, error = e.message)
+            Log.e(TAG, "POST $url failed", e)
+            ApiResult(success = false, error = e.message ?: "Unknown error")
         }
     }
 
@@ -259,6 +317,21 @@ object KopanowApi {
         return post("/device/register", request, RegisterDeviceResponse::class.java)
     }
 
+    /**
+     * Ask the backend whether this [deviceId] is already linked to another loan in Supabase.
+     * Call before showing the device-admin enrollment flow.
+     */
+    suspend fun checkEnrollmentEligibility(
+        deviceId: String,
+        borrowerId: String,
+        loanId: String
+    ): ApiResult<EnrollmentCheckResponse> =
+        post(
+            "/device/enrollment-check",
+            EnrollmentCheckRequest(deviceId, borrowerId, loanId),
+            EnrollmentCheckResponse::class.java
+        )
+
     suspend fun reportTamper(borrowerId: String, loanId: String, event: String): ApiResult<RegisterDeviceResponse> =
         post("/device/tamper", TamperReportRequest(borrowerId, loanId, event, System.currentTimeMillis()), RegisterDeviceResponse::class.java)
 
@@ -283,6 +356,13 @@ object KopanowApi {
             PaymentRefRequest(borrowerId, loanId, mpesaRef, amountClaimed, notes),
             PaymentRefResponse::class.java
         )
+
+    /**
+     * Submit a loan request before activation/enrollment is allowed.
+     * Backend should create/return a loan reference (loan_id) if approved/created.
+     */
+    suspend fun requestLoan(request: LoanRequest): ApiResult<LoanRequestResponse> =
+        post("/loan/request", request, LoanRequestResponse::class.java)
 
     suspend fun pollPaymentStatus(
         borrowerId: String,

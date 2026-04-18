@@ -24,8 +24,8 @@ object HeartbeatScheduler {
 
     private const val TAG = "HeartbeatScheduler"
 
-    /** Repeat interval for the periodic heartbeat: 24 hours. */
-    private const val REPEAT_INTERVAL_HOURS = 24L
+    /** Repeat interval for the periodic heartbeat: 15 minutes (WorkManager minimum). */
+    private const val REPEAT_INTERVAL_MINUTES = 15L
 
     /**
      * Schedule (or re-schedule) the periodic heartbeat.
@@ -40,7 +40,7 @@ object HeartbeatScheduler {
             .build()
 
         val request = PeriodicWorkRequestBuilder<HeartbeatWorker>(
-            REPEAT_INTERVAL_HOURS, TimeUnit.HOURS
+            REPEAT_INTERVAL_MINUTES, TimeUnit.MINUTES
         )
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
@@ -52,7 +52,7 @@ object HeartbeatScheduler {
             request
         )
 
-        Log.i(TAG, "Heartbeat scheduled (interval=${REPEAT_INTERVAL_HOURS}h, policy=UPDATE)")
+        Log.i(TAG, "Heartbeat scheduled (interval=${REPEAT_INTERVAL_MINUTES}min, policy=UPDATE)")
     }
 
     /**

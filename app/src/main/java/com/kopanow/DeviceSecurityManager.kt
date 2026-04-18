@@ -1,4 +1,4 @@
-package com.kopanow
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               package com.kopanow
 
 import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
@@ -174,6 +174,8 @@ object DeviceSecurityManager {
             KopanowPrefs.lockType         = KopanowPrefs.LOCK_TYPE_PAYMENT  // reset tamper flag
             KopanowPrefs.isPasscodeLocked = false
             KopanowPrefs.passcodeHash     = null
+            // Ensure overlay is removed immediately as part of unlock.
+            OverlayLockService.stop(context)
             Log.i(TAG, "unlockDevice: all lock state cleared (incl. tamper + passcode)")
             true
         } catch (e: Exception) {

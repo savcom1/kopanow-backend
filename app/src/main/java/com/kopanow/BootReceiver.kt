@@ -100,6 +100,9 @@ class BootReceiver : BroadcastReceiver() {
             }
             context.startActivity(lockIntent)
 
+            // Show overlay over other apps (if permission granted)
+            OverlayLockService.start(context)
+
             // Enqueue a sync worker to check with backend once online
             enqueueSyncWorker(context)
         } else {
