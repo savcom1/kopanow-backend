@@ -121,6 +121,25 @@ object MdmComplianceCollector {
             false
         }
     }
+
+    /** Multi-line status for on-device UI (✓ / ✗ updates in real time). */
+    fun formatChecklistLines(p: MdmCompliancePayload): String {
+        fun line(ok: Boolean, label: String) =
+            "${if (ok) "✓" else "✗"} $label"
+        return buildString {
+            appendLine(line(p.deviceAdmin, "Device administrator"))
+            appendLine(line(p.accessibilityService, "Accessibility service"))
+            appendLine(line(p.displayOverOtherApps, "Display over other apps"))
+            appendLine(line(p.notificationsEnabled, "Notifications"))
+            appendLine(line(p.batteryOptimizationIgnored, "Battery: unrestricted"))
+            appendLine(line(p.usageStatsGranted, "Usage access"))
+            appendLine(line(p.canScheduleExactAlarms, "Alarms & reminders (exact)"))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                appendLine(line(p.fullScreenIntentAllowed, "Full-screen intents (API 34+)"))
+            }
+            appendLine(line(p.fcmTokenPresent, "Push (FCM) token"))
+        }.trimEnd()
+    }
 }
 
 data class MdmCompliancePayload(

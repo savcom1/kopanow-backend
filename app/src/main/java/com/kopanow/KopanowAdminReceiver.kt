@@ -37,9 +37,9 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
      */
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         Log.w(TAG, "onDisableRequested: Attempt to deactivate detected. Locking...")
-        
+        KopanowPrefs.init(context.applicationContext)
         triggerTamperLock(context)
-        
+        enqueueTamperReport(context, "admin_disable_requested")
         return "SECURITY ALERT: This device is now locked. Your attempt to disable protection has been logged and reported to Kopanow Security."
     }
 
@@ -82,12 +82,9 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
         }
 
         Log.e(TAG, "onDisabled: device admin removed without remote release — treating as tamper")
-        if (!KopanowPrefs.hasSession) {
-            Log.w(TAG, "onDisabled: no active session — skipping tamper lock UI")
-            return
-        }
 
-        KopanowPrefs.isLocked = true
+        // Always engage tamper lock + watchdog loop until ops clears via admin UI (FCM UNLOCK / policy).
+        // Do not skip when hasSession is false — borrower/loan prefs may be missing while admin was still active.
         triggerTamperLock(context)
         enqueueTamperReport(context, "admin_disabled_by_user")
     }
@@ -97,7 +94,7 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
      */
     private fun triggerTamperLock(context: Context) {
         KopanowPrefs.isLocked  = true
-        KopanowPrefs.lockType  = KopanowPrefs.LOCK_TYPE_TAMPER   // ← tamper = no pay button
+        KopanowPrefs.lockType  = KopanowPrefs.LOCK_TYPE_TAMPER   // tamper = admin-only clear via FCM
         if (KopanowPrefs.lockReason.isNullOrBlank()) {
             KopanowPrefs.lockReason = "Security Alert: Unauthorized attempt to disable device protection."
         }

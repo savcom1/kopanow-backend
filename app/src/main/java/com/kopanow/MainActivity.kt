@@ -8,6 +8,8 @@ import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -72,6 +74,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProtectionTitle: TextView
     private lateinit var tvProtectionSub: TextView
     private lateinit var ivProtectionStatus: ImageView
+    private lateinit var tvMdmChecklist: TextView
+
+    private val complianceHandler = Handler(Looper.getMainLooper())
+    private val complianceRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!KopanowPrefs.isInitialised() || !KopanowPrefs.hasSession || KopanowPrefs.isLocked) return
+            refreshMdmComplianceUi()
+            complianceHandler.postDelayed(this, 900L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -142,23 +154,61 @@ class MainActivity : AppCompatActivity() {
         tvProtectionTitle = findViewById(R.id.tv_protection_title)
         tvProtectionSub = findViewById(R.id.tv_protection_sub)
         ivProtectionStatus = findViewById(R.id.iv_protection_status)
+        tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
 
         btnEnroll.setOnClickListener { triggerEnrollment() }
         btnPayNow.setOnClickListener { initiatePayment() }
     }
 
-    private fun updateProtectionStatusUI(active: Boolean) {
-        if (active) {
-            tvProtectionTitle.text = "Protection Active"
-            tvProtectionSub.text = "Your device is secured by Kopanow"
-            ivProtectionStatus.setImageResource(android.R.drawable.presence_online)
-            ImageViewCompat.setImageTintList(ivProtectionStatus, ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_green_dark)))
-        } else {
-            tvProtectionTitle.text = "Protection Inactive"
-            tvProtectionSub.text = "Device admin permission required"
-            ivProtectionStatus.setImageResource(android.R.drawable.presence_busy)
-            ImageViewCompat.setImageTintList(ivProtectionStatus, ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_red_dark)))
+    private fun updateProtectionStatusUI(@Suppress("UNUSED_PARAMETER") active: Boolean) {
+        refreshMdmComplianceUi()
+    }
+
+    /** Re-reads system state — call often; paired with [complianceRefreshRunnable] for ~real-time ticks. */
+    private fun refreshMdmComplianceUi() {
+        if (!::tvMdmChecklist.isInitialized) return
+        val p = MdmComplianceCollector.collect(this)
+        tvMdmChecklist.text = MdmComplianceCollector.formatChecklistLines(p)
+
+        val adminOn = DeviceSecurityManager.isAdminActive(this)
+        when {
+            p.allRequiredOk && adminOn -> {
+                tvProtectionTitle.text = "All required protections ON"
+                tvProtectionSub.text = "${p.okCount}/${p.requiredCount} checks — Kopanow can enforce policy"
+                ivProtectionStatus.setImageResource(android.R.drawable.presence_online)
+                ImageViewCompat.setImageTintList(
+                    ivProtectionStatus,
+                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                )
+            }
+            adminOn -> {
+                tvProtectionTitle.text = "Action needed"
+                tvProtectionSub.text = "${p.okCount}/${p.requiredCount} required checks OK — enable the ✗ items below"
+                ivProtectionStatus.setImageResource(android.R.drawable.presence_busy)
+                ImageViewCompat.setImageTintList(
+                    ivProtectionStatus,
+                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_orange_dark))
+                )
+            }
+            else -> {
+                tvProtectionTitle.text = "Device administrator: OFF"
+                tvProtectionSub.text = "${p.okCount}/${p.requiredCount} checks — enable Device admin first"
+                ivProtectionStatus.setImageResource(android.R.drawable.presence_busy)
+                ImageViewCompat.setImageTintList(
+                    ivProtectionStatus,
+                    ColorStateList.valueOf(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                )
+            }
         }
+    }
+
+    private fun startCompliancePolling() {
+        complianceHandler.removeCallbacks(complianceRefreshRunnable)
+        complianceHandler.post(complianceRefreshRunnable)
+    }
+
+    private fun stopCompliancePolling() {
+        complianceHandler.removeCallbacks(complianceRefreshRunnable)
     }
 
     private fun showEnrollmentPrompt() {
@@ -224,7 +274,8 @@ class MainActivity : AppCompatActivity() {
                 isSafeMode = false,
                 batteryPct = -1,
                 frpSeeded = KopanowPrefs.frpSeeded,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                mdmCompliance = MdmComplianceCollector.collect(this@MainActivity),
             )
             KopanowApi.heartbeat(request) // Silent check-in to update "Last Seen"
         }
@@ -248,12 +299,19 @@ class MainActivity : AppCompatActivity() {
             goToLockScreen()
         } else if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {
             updateProtectionStatusUI(DeviceSecurityManager.isAdminActive(this))
+            startCompliancePolling()
             fetchLoanDetails()
             checkInWithBackend() // Update "Online" status on dashboard
         }
     }
 
+    override fun onPause() {
+        stopCompliancePolling()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        stopCompliancePolling()
         activityScope.cancel()
         super.onDestroy()
     }

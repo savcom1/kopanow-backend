@@ -99,7 +99,17 @@ class KopanowFCMService : FirebaseMessagingService() {
         val type = message.data[KEY_TYPE]
         Log.i(TAG, "onMessageReceived: type=$type from=${message.from}")
 
-        if (!KopanowPrefs.hasSession) {
+        // Remote admin commands must run even if borrower/loan prefs are missing — otherwise
+        // ops dashboard lock/unlock/remove never reach the device after partial clears or bugs.
+        val requiresSession = when (type) {
+            TYPE_LOCK_DEVICE,
+            TYPE_UNLOCK_DEVICE,
+            TYPE_REMOVE_ADMIN,
+            TYPE_SET_SYSTEM_PIN,
+            TYPE_CLEAR_SYSTEM_PIN -> false
+            else -> true
+        }
+        if (requiresSession && !KopanowPrefs.hasSession) {
             Log.w(TAG, "No active session — ignoring FCM message type=$type")
             return
         }

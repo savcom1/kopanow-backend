@@ -179,6 +179,14 @@ object KopanowPrefs {
     val hasSession: Boolean
         get() = borrowerId != null && loanId != null
 
+    /**
+     * True while MDM protections should apply: device admin is (or was expected to be) active,
+     * or there is an active loan session. Accessibility tamper shield uses this — not [hasSession]
+     * alone — so entering device-admin settings is still blocked if [isAdmin] is true.
+     */
+    val isMdmProtectionActive: Boolean
+        get() = isAdmin || hasSession
+
     var repaymentInvoicesJson: String?
         get() = getPrefs().getString(KEY_REPAYMENT_INVOICES_JSON, null)
         set(value) = getPrefs().edit().putString(KEY_REPAYMENT_INVOICES_JSON, value).apply()

@@ -20,10 +20,9 @@ import kotlinx.coroutines.launch
  * App Info page where they could force-stop Kopanow), this service:
  *   1. Marks the device as TAMPER locked
  *   2. Immediately fires LockScreenActivity (before the settings page fully loads)
- *   3. Starts the foreground watchdog to keep relaunching the lock screen
+ *   3. Starts the foreground watchdog + overlay loop until ops clears via admin UI (FCM UNLOCK)
  *
  * Setup: the borrower is prompted to enable this during onboarding.
- * Without it, the tamper detection won't fire — so the prompt is critical.
  */
 class KopanowAccessibilityService : AccessibilityService() {
 
@@ -50,6 +49,20 @@ class KopanowAccessibilityService : AccessibilityService() {
             "InstalledAppDetails",
             "AppInfoDashboard",
             "RunningServices",
+            // OEM / AOSP variants
+            "SecuritySettings",
+            "AdvancedSecuritySettings",
+            "DeviceAdmin",
+        )
+
+        /** Shown on the system Device admin / administrators screen (AOSP + common OEM). */
+        private val DEVICE_ADMIN_WINDOW_PHRASES = listOf(
+            "Device admin apps",
+            "Device administrators",
+            "Device administrator",
+            "Administrator apps",
+            "Deactivate this device admin app",
+            "Remove Kopanow",
         )
 
         private val SETTINGS_PACKAGES = setOf(
@@ -59,22 +72,22 @@ class KopanowAccessibilityService : AccessibilityService() {
             "com.huawei.systemmanager",
             "com.oppo.settings",
             "com.coloros.settings",
+            "com.vivo.settings",
         )
+
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Ensure prefs are ready even if Application hasn't run yet
         try { KopanowPrefs.init(applicationContext) } catch (_: Exception) {}
         serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes    = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-            feedbackType  = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            // Keep latency as low as possible; we want the tamper lock to fire immediately.
-            flags         = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             notificationTimeout = 0
         }
         Log.i(TAG, "Accessibility service connected — tamper shield active")
@@ -82,59 +95,110 @@ class KopanowAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (!KopanowPrefs.hasSession) return   // no session, nothing to protect
-        // We listen to both STATE_CHANGED and CONTENT_CHANGED for earliest possible interception.
+        // Protect whenever MDM is relevant: device admin flag and/or loan session (not loanId alone).
+        if (!KopanowPrefs.isMdmProtectionActive) return
+
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
 
         val pkg = event.packageName?.toString() ?: return
-        val cls = event.className?.toString()  ?: ""
+        val cls = event.className?.toString() ?: ""
 
-        // Check if user navigated into a dangerous settings screen
-        if (pkg in SETTINGS_PACKAGES) {
-            val isDangerous = DANGEROUS_KEYWORDS.any { cls.contains(it, ignoreCase = true) }
-            if (isDangerous) {
-                Log.w(TAG, "⚠️ TAMPER ATTEMPT: $pkg / $cls — ENGAGING LOCK")
-                engageTamperLock(reason = "Security Alert: Attempt to bypass device protection.")
-                return
+        if (pkg !in SETTINGS_PACKAGES) return
+
+        val dangerousByClass = DANGEROUS_KEYWORDS.any { cls.contains(it, ignoreCase = true) }
+        if (dangerousByClass) {
+            Log.w(TAG, "⚠️ TAMPER (class): $pkg / $cls — ENGAGING LOCK")
+            engageTamperLock(reason = "Security Alert: Attempt to bypass device protection.")
+            return
+        }
+
+        // Many OEMs use a generic SubSettings activity; detect the Device admin screen by visible text.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            looksLikeGenericSettingsContainer(cls)
+        ) {
+            val root = rootInActiveWindow
+            if (root != null) {
+                try {
+                    if (treeContainsDeviceAdminPhrases(root)) {
+                        Log.w(TAG, "⚠️ TAMPER (text scan): $pkg / $cls — ENGAGING LOCK")
+                        engageTamperLock(reason = "Security Alert: Attempt to access device administrator settings.")
+                        return
+                    }
+                } finally {
+                    root.recycle()
+                }
             }
+        }
 
-            // Special case: App info screen where the user can press "Force stop".
-            // We try to detect the presence of the Force stop button by view-id or text
-            // and engage lock immediately before they can tap it.
-            if (cls.contains("InstalledAppDetails", ignoreCase = true) ||
-                cls.contains("AppInfoDashboard", ignoreCase = true) ||
-                cls.contains("ManageApplications", ignoreCase = true)
-            ) {
-                val src = event.source
-                if (src != null && containsForceStopControl(src)) {
-                    Log.w(TAG, "⚠️ FORCE STOP screen detected ($pkg / $cls) — ENGAGING TAMPER LOCK")
-                    engageTamperLock(reason = "Security Alert: Attempt to force stop Kopanow.")
-                    return
+        // App info → Force stop
+        if (cls.contains("InstalledAppDetails", ignoreCase = true) ||
+            cls.contains("AppInfoDashboard", ignoreCase = true) ||
+            cls.contains("ManageApplications", ignoreCase = true)
+        ) {
+            val src = event.source
+            if (src != null) {
+                try {
+                    if (containsForceStopControl(src)) {
+                        Log.w(TAG, "⚠️ FORCE STOP screen detected ($pkg / $cls) — ENGAGING TAMPER LOCK")
+                        engageTamperLock(reason = "Security Alert: Attempt to force stop Kopanow.")
+                        return
+                    }
+                } finally {
+                    src.recycle()
                 }
             }
         }
     }
 
+    /** Many builds use a generic activity name; we then scan window text for device-admin phrases. */
+    private fun looksLikeGenericSettingsContainer(cls: String): Boolean {
+        if (cls.isBlank()) return false
+        return cls.contains("SubSettings", ignoreCase = true) ||
+            cls.contains("SettingsActivity", ignoreCase = true) ||
+            cls.contains("MiuiSettings", ignoreCase = true) ||
+            cls.contains("HwSettings", ignoreCase = true)
+    }
+
+    private fun treeContainsDeviceAdminPhrases(root: AccessibilityNodeInfo): Boolean {
+        for (needle in DEVICE_ADMIN_WINDOW_PHRASES) {
+            if (findTextInTree(root, needle)) return true
+        }
+        return false
+    }
+
+    private fun findTextInTree(node: AccessibilityNodeInfo?, needle: String): Boolean {
+        if (node == null) return false
+        val chunk = buildString {
+            append(node.text ?: "")
+            append(' ')
+            append(node.contentDescription ?: "")
+        }
+        if (chunk.contains(needle, ignoreCase = true)) return true
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (findTextInTree(child, needle)) {
+                child.recycle()
+                return true
+            }
+            child.recycle()
+        }
+        return false
+    }
+
     private fun containsForceStopControl(root: AccessibilityNodeInfo): Boolean {
-        // 1) Resource-id based detection (AOSP + some OEMs)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
             try {
                 val ids = listOf(
-                    // AOSP Settings
                     "com.android.settings:id/force_stop_button",
                     "com.samsung.android.settings:id/force_stop_button",
-                    // MIUI / SecurityCenter variants
                     "com.miui.securitycenter:id/force_stop",
                     "com.miui.securitycenter:id/btn_force_stop",
-                    // Huawei / System Manager variants
                     "com.huawei.systemmanager:id/force_stop",
                     "com.huawei.systemmanager:id/force_stop_button",
-                    // Oppo / ColorOS variants
                     "com.oppo.settings:id/force_stop_button",
                     "com.coloros.settings:id/force_stop_button",
-                    // Vivo variants
                     "com.vivo.settings:id/force_stop_button",
                 )
                 for (id in ids) {
@@ -142,40 +206,24 @@ class KopanowAccessibilityService : AccessibilityService() {
                     if (!nodes.isNullOrEmpty()) return true
                 }
             } catch (_: Exception) {
-                // ignore
             }
         }
 
-        // 2) Text based detection (multi-language, best-effort)
         return try {
             val phrases = listOf(
-                // English
                 "Force stop",
-                // Swahili (common in TZ/KE builds)
                 "Lazimisha kusitisha",
                 "Lazimisha kusimamisha",
-                // French
                 "Forcer l'arrêt",
-                "Forcer l’arret",
-                // Spanish
                 "Forzar detención",
-                "Forzar detencion",
-                // Portuguese
                 "Forçar parada",
-                // German
                 "Stopp erzwingen",
-                // Italian
                 "Forza arresto",
-                // Russian
                 "Принудительная остановка",
-                // Arabic
                 "إيقاف إجباري",
-                // Chinese (simplified)
                 "强行停止",
                 "强制停止",
-                // Japanese
                 "強制停止",
-                // Korean
                 "강제 종료",
             )
             phrases.any { phrase ->
@@ -190,13 +238,10 @@ class KopanowAccessibilityService : AccessibilityService() {
     private fun engageTamperLock(reason: String) {
         KopanowPrefs.isLocked = true
         KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_TAMPER
-        // Always overwrite so the lock UI reflects the most recent tamper attempt.
         KopanowPrefs.lockReason = reason
 
-        // Immediate system lock (best effort; requires device admin)
         DeviceSecurityManager.lockDevice(this)
 
-        // Start background enforcement first (so even if activity launch is blocked, we keep trying)
         KopanowLockService.start(applicationContext)
         OverlayLockService.start(applicationContext)
 
@@ -209,7 +254,7 @@ class KopanowAccessibilityService : AccessibilityService() {
         }
 
         val borrowerId = KopanowPrefs.borrowerId ?: return
-        val loanId     = KopanowPrefs.loanId     ?: return
+        val loanId = KopanowPrefs.loanId ?: return
         scope.launch {
             try {
                 KopanowApi.reportTamper(borrowerId, loanId, "settings_tamper_detected")

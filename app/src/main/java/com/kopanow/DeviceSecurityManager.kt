@@ -177,11 +177,8 @@ object DeviceSecurityManager {
      */
     fun unlockDevice(context: Context): Boolean {
         return try {
-            if (!isAdminActive(context)) {
-                Log.e(TAG, "unlockDevice: admin not active")
-                return false
-            }
-            // Clear ALL lock-related state so no stale flags remain
+            // Always clear local lock UX (prefs + overlay). FCM UNLOCK must dismiss UI even if
+            // device admin was revoked, failed, or never completed — otherwise the user stays stuck.
             KopanowPrefs.isLocked         = false
             KopanowPrefs.lockReason       = null
             KopanowPrefs.amountDue        = null
@@ -189,8 +186,11 @@ object DeviceSecurityManager {
             KopanowPrefs.isPasscodeLocked = false
             KopanowPrefs.passcodeHash     = null
             KopanowPrefs.localPinLockInvoiceNumber = null
-            // Ensure overlay is removed immediately as part of unlock.
             OverlayLockService.stop(context)
+            if (!isAdminActive(context)) {
+                Log.w(TAG, "unlockDevice: admin not active — prefs + overlay cleared (no DPM lockNow)")
+                return true
+            }
             Log.i(TAG, "unlockDevice: all lock state cleared (incl. tamper + passcode)")
             true
         } catch (e: Exception) {
@@ -234,16 +234,13 @@ object DeviceSecurityManager {
         pendingRemoteAdminRemoval = true
         try {
             dpm(context).removeActiveAdmin(adminComponent(context))
-            Log.i(TAG, "removeDeviceAdmin: admin removed")
+            Log.i(TAG, "removeDeviceAdmin: removeActiveAdmin returned — onDisabled will consume pending flag")
         } catch (e: Exception) {
             pendingRemoteAdminRemoval = false
             Log.e(TAG, "removeDeviceAdmin failed", e)
-            return
         }
-        if (pendingRemoteAdminRemoval) {
-            Log.w(TAG, "removeDeviceAdmin: pending flag not consumed by onDisabled — clearing")
-            pendingRemoteAdminRemoval = false
-        }
+        // Do NOT clear pendingRemoteAdminRemoval here — [KopanowAdminReceiver.onDisabled] runs
+        // asynchronously; clearing early made remote removal look like user tampering.
     }
 
     // ─── Device ID ────────────────────────────────────────────────────────
