@@ -6,9 +6,11 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.CoroutineScope
@@ -38,12 +40,12 @@ class RegistrationActivity : AppCompatActivity() {
         val etAddress    = findViewById<TextInputEditText>(R.id.et_address)
 
         val etAmount     = findViewById<TextInputEditText>(R.id.et_loan_amount)
-        val etTenor      = findViewById<TextInputEditText>(R.id.et_loan_tenor)
+        val actvRepaymentMonths = findViewById<MaterialAutoCompleteTextView>(R.id.actv_repayment_months)
         val etPurpose    = findViewById<TextInputEditText>(R.id.et_loan_purpose)
 
         val tilPhone     = findViewById<TextInputLayout>(R.id.til_phone)
         val tilAmount    = findViewById<TextInputLayout>(R.id.til_loan_amount)
-        val tilTenor     = findViewById<TextInputLayout>(R.id.til_loan_tenor)
+        val tilRepaymentMonths = findViewById<TextInputLayout>(R.id.til_repayment_months)
         val tilPurpose   = findViewById<TextInputLayout>(R.id.til_loan_purpose)
 
         val btnSubmit    = findViewById<MaterialButton>(R.id.btn_submit_request)
@@ -56,7 +58,19 @@ class RegistrationActivity : AppCompatActivity() {
         etRegion.setText(KopanowPrefs.region ?: "")
         etAddress.setText(KopanowPrefs.address ?: "")
         if (KopanowPrefs.requestedLoanAmountTzs > 0) etAmount.setText(KopanowPrefs.requestedLoanAmountTzs.toString())
-        if (KopanowPrefs.requestedLoanTenorDays > 0) etTenor.setText(KopanowPrefs.requestedLoanTenorDays.toString())
+        val monthLabels = resources.getStringArray(R.array.repayment_month_options)
+        actvRepaymentMonths.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_list_item_1, monthLabels.toList())
+        )
+        when {
+            KopanowPrefs.requestedLoanRepaymentMonths in 1..3 ->
+                actvRepaymentMonths.setText(monthLabels[KopanowPrefs.requestedLoanRepaymentMonths - 1], false)
+            KopanowPrefs.requestedLoanTenorDays > 0 -> {
+                val approxMonths = ((KopanowPrefs.requestedLoanTenorDays + 15) / 30).coerceIn(1, 3)
+                actvRepaymentMonths.setText(monthLabels[approxMonths - 1], false)
+            }
+            else -> actvRepaymentMonths.setText(monthLabels[0], false)
+        }
         etPurpose.setText(KopanowPrefs.requestedLoanPurpose ?: "")
 
         btnSubmit.setOnClickListener {
@@ -67,13 +81,12 @@ class RegistrationActivity : AppCompatActivity() {
             val address = etAddress.text?.toString()?.trim().orEmpty()
 
             val amount = etAmount.text?.toString()?.trim()?.toLongOrNull()
-            val tenor = etTenor.text?.toString()?.trim()?.toIntOrNull()
             val purpose = etPurpose.text?.toString()?.trim().orEmpty()
 
             // Basic validation
             tilPhone.error = null
             tilAmount.error = null
-            tilTenor.error = null
+            tilRepaymentMonths.error = null
             tilPurpose.error = null
 
             // Tanzania M-Pesa format: 255XXXXXXXXX (12 digits)
@@ -91,10 +104,14 @@ class RegistrationActivity : AppCompatActivity() {
                 tilAmount.error = "Enter a valid amount"
                 return@setOnClickListener
             }
-            if (tenor == null || tenor <= 0) {
-                tilTenor.error = "Enter repayment days"
+            val selectedLabel = actvRepaymentMonths.text?.toString()?.trim().orEmpty()
+            val monthIdx = monthLabels.indexOf(selectedLabel)
+            if (monthIdx < 0) {
+                tilRepaymentMonths.error = "Select repayment period"
                 return@setOnClickListener
             }
+            val repaymentMonths = monthIdx + 1
+            val tenorDays = repaymentMonths * 30
             if (purpose.length < 4) {
                 tilPurpose.error = "Enter purpose"
                 return@setOnClickListener
@@ -111,7 +128,8 @@ class RegistrationActivity : AppCompatActivity() {
             KopanowPrefs.region = region
             KopanowPrefs.address = address
             KopanowPrefs.requestedLoanAmountTzs = amount
-            KopanowPrefs.requestedLoanTenorDays = tenor
+            KopanowPrefs.requestedLoanRepaymentMonths = repaymentMonths
+            KopanowPrefs.requestedLoanTenorDays = tenorDays
             KopanowPrefs.requestedLoanPurpose = purpose
 
             btnSubmit.isEnabled = false
@@ -140,7 +158,9 @@ class RegistrationActivity : AppCompatActivity() {
                         region = region,
                         address = address,
                         amountTzs = amount,
-                        tenorDays = tenor,
+                        repaymentMonths = repaymentMonths,
+                        installmentWeeks = repaymentMonths * 4,
+                        tenorDays = tenorDays,
                         purpose = purpose,
                         deviceId = androidDeviceId,
                         deviceModel = Build.MODEL,

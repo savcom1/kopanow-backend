@@ -161,9 +161,9 @@ data class LoanRequest(
     @SerializedName("region") val region: String,
     @SerializedName("address") val address: String,
     @SerializedName("amount_tzs") val amountTzs: Long,
-    /** If null, backend defaults (e.g. 125% of principal). */
-    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long? = null,
-    /** Weekly installment count (default 5). */
+    /** 1–3: total = principal×(120%/140%/160%); weekly = total÷(4×months). */
+    @SerializedName("repayment_months") val repaymentMonths: Int? = null,
+    /** Weekly count; optional if repayment_months is set (4× months). */
     @SerializedName("installment_weeks") val installmentWeeks: Int? = null,
     @SerializedName("tenor_days") val tenorDays: Int,
     @SerializedName("purpose") val purpose: String,

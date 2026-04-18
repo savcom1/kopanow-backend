@@ -167,21 +167,21 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_loan_tenor"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:id="@+id/til_repayment_months"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="Repayment period (days)"
+            android:hint="Repayment period"
             app:boxStrokeColor="@color/lock_brand"
             app:hintTextColor="@color/lock_brand"
             app:layout_constraintTop_toBottomOf="@id/til_loan_amount">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_loan_tenor"
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/actv_repayment_months"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="number"
+                android:inputType="none"
                 android:textColor="#263238" />
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -194,7 +194,7 @@
             android:hint="Purpose (e.g. business, school fees)"
             app:boxStrokeColor="@color/lock_brand"
             app:hintTextColor="@color/lock_brand"
-            app:layout_constraintTop_toBottomOf="@id/til_loan_tenor">
+            app:layout_constraintTop_toBottomOf="@id/til_repayment_months">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_loan_purpose"

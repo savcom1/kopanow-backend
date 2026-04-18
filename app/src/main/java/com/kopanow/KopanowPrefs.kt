@@ -46,6 +46,7 @@ object KopanowPrefs {
     // ── Loan request ─────────────────────────────────────────────────────
     private const val KEY_LOAN_REQ_AMOUNT  = "loan_req_amount"
     private const val KEY_LOAN_REQ_TENOR   = "loan_req_tenor"
+    private const val KEY_LOAN_REQ_MONTHS  = "loan_req_months"
     private const val KEY_LOAN_REQ_PURPOSE = "loan_req_purpose"
     private const val KEY_LOAN_REQ_DONE    = "loan_req_done"
 
@@ -115,6 +116,11 @@ object KopanowPrefs {
     var requestedLoanTenorDays: Int
         get() = getPrefs().getInt(KEY_LOAN_REQ_TENOR, 0)
         set(value) = getPrefs().edit().putInt(KEY_LOAN_REQ_TENOR, value).apply()
+
+    /** 1–3 months repayment term (weekly schedule on server). */
+    var requestedLoanRepaymentMonths: Int
+        get() = getPrefs().getInt(KEY_LOAN_REQ_MONTHS, 0)
+        set(value) = getPrefs().edit().putInt(KEY_LOAN_REQ_MONTHS, value).apply()
 
     var requestedLoanPurpose: String?
         get() = getPrefs().getString(KEY_LOAN_REQ_PURPOSE, null)

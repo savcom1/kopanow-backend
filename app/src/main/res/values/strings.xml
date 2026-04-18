@@ -30,4 +30,11 @@
 
     <!-- MDM Lite: Accessibility service description shown in Android Settings -->
     <string name="accessibility_service_description">Kopanow monitors device activity to ensure loan agreement compliance. This service detects attempts to disable device management and re-engages the lock screen to protect both the lender and borrower.</string>
+
+    <!-- Total repayment = principal × 120%/140%/160%; weekly = total ÷ weeks -->
+    <string-array name="repayment_month_options">
+        <item>1 month — 4 weeks (repay 120% of principal)</item>
+        <item>2 months — 8 weeks (repay 140% of principal)</item>
+        <item>3 months — 12 weeks (repay 160% of principal)</item>
+    </string-array>
 </resources>
