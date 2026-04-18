@@ -245,20 +245,21 @@ class HeartbeatWorker(
      *  4. Self-remove device admin.
      */
     private suspend fun handleRemoveAdmin(borrowerId: String, loanId: String) {
-        // 1. Notify backend
-        KopanowApi.updateStatus(borrowerId, loanId, "admin_removed_by_backend")
+        withContext(Dispatchers.Main) {
+            DeviceSecurityManager.unlockDevice(context.applicationContext)
+            FcmPinManager.handleClearSystemPin(context.applicationContext)
+        }
+
+        // Remove admin while DPM is still guaranteed active — before prefs clear.
+        DeviceSecurityManager.removeDeviceAdmin(context.applicationContext)
+
+        KopanowApi.updateStatus(borrowerId, loanId, "admin_removed")
 
         RepaymentAlarmScheduler.cancelAll(context)
-
-        // 2. Clear prefs
         KopanowPrefs.clear()
-
-        // 3. Cancel future heartbeats
         HeartbeatScheduler.cancel(context)
 
-        // 4. Remove device admin
-        DeviceSecurityManager.removeDeviceAdmin(context)
-        Log.i(TAG, "handleRemoveAdmin: prefs cleared, heartbeat cancelled, admin removed")
+        Log.i(TAG, "handleRemoveAdmin: backend notified, prefs cleared, admin removed")
     }
 
     // ── Telemetry helpers ─────────────────────────────────────────────────

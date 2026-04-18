@@ -186,16 +186,29 @@
                 android:textSize="@dimen/text_body" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <TextView
+            android:id="@+id/tv_weekly_installment"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_2"
+            android:text="@string/weekly_installment_pending"
+            android:textAppearance="@style/TextAppearance.Kopanow.Body"
+            android:textColor="@color/kopanow_teal"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/til_loan_amount" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_repayment_months"
             style="@style/Widget.Kopanow.TextInput.ExposedDropdown"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/grid_2"
-            android:hint="Repayment period"
+            android:hint="Repayment period (months)"
             app:boxStrokeColor="@color/kopanow_navy"
             app:hintTextColor="@color/kopanow_text_muted"
-            app:layout_constraintTop_toBottomOf="@id/til_loan_amount">
+            app:layout_constraintTop_toBottomOf="@id/tv_weekly_installment">
 
             <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/actv_repayment_months"

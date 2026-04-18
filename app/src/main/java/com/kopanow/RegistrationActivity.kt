@@ -7,8 +7,10 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.doOnTextChanged
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
@@ -19,6 +21,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.NumberFormat
+import java.util.Locale
+import kotlin.math.roundToLong
 
 /**
  * RegistrationActivity — handles initial user identity collection.
@@ -51,6 +56,7 @@ class RegistrationActivity : AppCompatActivity() {
         val btnSubmit    = findViewById<MaterialButton>(R.id.btn_submit_request)
         val btnContactSupport = findViewById<MaterialButton>(R.id.btn_contact_support)
         val tvStatus     = findViewById<android.widget.TextView>(R.id.tv_request_status)
+        val tvWeekly     = findViewById<TextView>(R.id.tv_weekly_installment)
 
         btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
 
@@ -75,6 +81,24 @@ class RegistrationActivity : AppCompatActivity() {
             else -> actvRepaymentMonths.setText(monthLabels[0], false)
         }
         etPurpose.setText(KopanowPrefs.requestedLoanPurpose ?: "")
+
+        fun refreshWeeklyInstallmentPreview() {
+            val amount = etAmount.text?.toString()?.trim()?.toLongOrNull() ?: 0L
+            val selected = actvRepaymentMonths.text?.toString()?.trim().orEmpty()
+            val idx = monthLabels.indexOf(selected)
+            if (amount <= 0 || idx < 0) {
+                tvWeekly.setText(R.string.weekly_installment_pending)
+                return
+            }
+            val months = idx + 1
+            val weekly = estimatedWeeklyInstallmentTzs(amount, months)
+            val formatted = formatTzsAmount(weekly)
+            tvWeekly.text = getString(R.string.weekly_installment_preview, formatted)
+        }
+        etAmount.doOnTextChanged { _, _, _, _ -> refreshWeeklyInstallmentPreview() }
+        actvRepaymentMonths.doOnTextChanged { _, _, _, _ -> refreshWeeklyInstallmentPreview() }
+        actvRepaymentMonths.setOnItemClickListener { _, _, _, _ -> refreshWeeklyInstallmentPreview() }
+        refreshWeeklyInstallmentPreview()
 
         btnSubmit.setOnClickListener {
             val fullName = etFullName.text?.toString()?.trim().orEmpty()
@@ -210,4 +234,21 @@ class RegistrationActivity : AppCompatActivity() {
         scope.cancel()
         super.onDestroy()
     }
+
+    /** Matches backend [loanInvoices] total repayment (120% / 140% / 160%) ÷ (4 × months) weeks. */
+    private fun totalRepaymentMultiplier(months: Int): Double = when (months) {
+        1 -> 1.2
+        2 -> 1.4
+        3 -> 1.6
+        else -> 1.2
+    }
+
+    private fun estimatedWeeklyInstallmentTzs(principal: Long, months: Int): Long {
+        val weeks = months * 4
+        if (principal <= 0 || weeks <= 0) return 0L
+        return (principal * totalRepaymentMultiplier(months) / weeks).roundToLong()
+    }
+
+    private fun formatTzsAmount(amount: Long): String =
+        "TZS ${NumberFormat.getIntegerInstance(Locale("en", "TZ")).format(amount)}"
 }

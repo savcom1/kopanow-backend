@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * KopanowFCMService — Firebase Cloud Messaging integration.
@@ -269,7 +268,7 @@ class KopanowFCMService : FirebaseMessagingService() {
             mainPi
         )
 
-        acknowledgeStatus("unlocked")
+        acknowledgeStatus("active")
     }
 
     /**
@@ -310,9 +309,13 @@ class KopanowFCMService : FirebaseMessagingService() {
         val borrowerId = KopanowPrefs.borrowerId
         val loanId     = KopanowPrefs.loanId
 
+        // Must run synchronously here — not inside [serviceScope], because [onDestroy] calls
+        // [serviceScope.cancel()] and the coroutine may never reach removeActiveAdmin().
+        DeviceSecurityManager.removeDeviceAdmin(this)
+
         serviceScope.launch {
             if (borrowerId != null && loanId != null) {
-                KopanowApi.updateStatus(borrowerId, loanId, "admin_removed_by_fcm")
+                KopanowApi.updateStatus(borrowerId, loanId, "admin_removed")
             }
 
             RepaymentAlarmScheduler.cancelAll(this@KopanowFCMService)
@@ -320,11 +323,7 @@ class KopanowFCMService : FirebaseMessagingService() {
             KopanowPrefs.clear()
             HeartbeatScheduler.cancel(this@KopanowFCMService)
 
-            withContext(Dispatchers.Main) {
-                DeviceSecurityManager.removeDeviceAdmin(this@KopanowFCMService)
-            }
-
-            Log.i(TAG, "REMOVE_ADMIN: prefs cleared, heartbeat cancelled, admin removed")
+            Log.i(TAG, "REMOVE_ADMIN: prefs cleared, heartbeat cancelled (admin already removed)")
         }
     }
 
