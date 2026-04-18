@@ -140,7 +140,10 @@ router.post('/register', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/heartbeat', async (req, res) => {
   try {
-    const { borrower_id, loan_id, device_id, dpc_active, is_safe_mode, battery_pct, timestamp } = req.body;
+    const {
+      borrower_id, loan_id, device_id, dpc_active, is_safe_mode, battery_pct, timestamp,
+      mdm_compliance: mdmCompliance,
+    } = req.body;
     if (!borrower_id || !loan_id) {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
     }
@@ -156,12 +159,26 @@ router.post('/heartbeat', async (req, res) => {
     if (!device) return res.status(404).json({ success: false, error: 'Device not registered' });
 
     let action = null;
-    const updates = {
-      last_seen: new Date().toISOString(),
-      last_heartbeat: { dpc_active, is_safe_mode, battery_pct, received_at: new Date().toISOString() },
-      dpc_active: dpc_active ?? true,
-      updated_at: new Date().toISOString()
+    const receivedAt = new Date().toISOString();
+    const lastHb = {
+      dpc_active,
+      is_safe_mode,
+      battery_pct,
+      received_at: receivedAt,
     };
+    if (mdmCompliance && typeof mdmCompliance === 'object') {
+      lastHb.mdm_compliance = mdmCompliance;
+    }
+
+    const updates = {
+      last_seen: receivedAt,
+      last_heartbeat: lastHb,
+      dpc_active: dpc_active ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (mdmCompliance && typeof mdmCompliance === 'object') {
+      updates.mdm_compliance = mdmCompliance;
+    }
 
     if (device.device_id && device_id && device.device_id !== device_id) {
       updates.is_locked = true;

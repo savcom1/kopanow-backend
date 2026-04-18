@@ -94,6 +94,71 @@ function formatInvoiceSummaryHtml(s) {
   return bits.length ? bits.join(' <span class="text-muted">·</span> ') : '<span class="text-muted">—</span>';
 }
 
+function mdmBoolHtml(v) {
+  if (v === true) return '<span style="color:var(--green)">Yes</span>';
+  if (v === false) return '<span style="color:var(--red)">No</span>';
+  return '<span class="text-muted">—</span>';
+}
+
+/** Table cell: summary from devices.mdm_compliance (heartbeat snapshot). */
+function mdmComplianceCell(m) {
+  if (!m || typeof m !== 'object') return '<span class="text-muted" title="No snapshot yet">—</span>';
+  const ok = m.all_required_ok === true;
+  const oc = m.ok_count;
+  const rc = m.required_count;
+  if (typeof oc === 'number' && typeof rc === 'number') {
+    const title = ok ? 'All required permissions OK' : 'Some permissions missing — open Details';
+    return ok
+      ? `<span style="color:var(--green)" title="${esc(title)}">✓ ${oc}/${rc}</span>`
+      : `<span style="color:var(--amber)" title="${esc(title)}">⚠ ${oc}/${rc}</span>`;
+  }
+  return ok ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--amber)">⚠</span>';
+}
+
+/** Device modal: per-flag breakdown from heartbeat mdm_compliance JSON. */
+function formatMdmComplianceModalHtml(m) {
+  if (!m || typeof m !== 'object') {
+    return '<div class="text-muted" style="font-size:12px">No compliance snapshot yet — device will send one on the next heartbeat.</div>';
+  }
+  const rows = [
+    ['Device admin', m.device_admin],
+    ['Accessibility (Kopanow)', m.accessibility_service],
+    ['Display over other apps', m.display_over_other_apps],
+    ['Notifications channel OK', m.notifications_ok],
+    ['POST notifications permission', m.post_notifications_permission],
+    ['Battery: not restricted', m.battery_optimization_ignored],
+    ['Usage access (stats)', m.usage_stats_granted],
+    ['Schedule exact alarms', m.can_schedule_exact_alarms],
+    ['Full-screen intent', m.full_screen_intent_allowed],
+    ['FCM token on device', m.fcm_token_present],
+  ];
+  let inner = rows.map(([label, v]) => `
+    <div class="detail-row">
+      <span class="detail-label">${esc(label)}</span>
+      <span class="detail-value">${mdmBoolHtml(v)}</span>
+    </div>`).join('');
+  if (m.sdk_int != null) {
+    inner += `
+    <div class="detail-row">
+      <span class="detail-label">SDK / API level</span>
+      <span class="detail-value">${esc(String(m.sdk_int))}</span>
+    </div>`;
+  }
+  const oc = m.ok_count;
+  const rc = m.required_count;
+  const summary = (typeof oc === 'number' && typeof rc === 'number')
+    ? `<div style="margin:0 0 10px;font-size:12px">
+        ${m.all_required_ok
+          ? '<span style="color:var(--green);font-weight:600">Required checks: all OK</span>'
+          : `<span style="color:var(--amber);font-weight:600">Required checks: ${oc} / ${rc}</span>`}
+       </div>`
+    : '';
+  const cap = m.captured_at_ms
+    ? `<div class="text-muted" style="font-size:11px;margin-top:8px">Captured: ${new Date(m.captured_at_ms).toLocaleString()}</div>`
+    : '';
+  return summary + inner + cap;
+}
+
 function invoiceStatusBadge(status) {
   const map = {
     pending: '<span class="status-badge s-registered">Pending</span>',
@@ -200,7 +265,7 @@ async function loadDevices() {
 
   const tbody = $('#devices-tbody');
   if (!data.devices?.length) {
-    tbody.innerHTML = '<tr><td colspan="11" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
     return;
   }
 
@@ -224,6 +289,7 @@ async function loadDevices() {
       <td>${d.device_model || '—'}</td>
       <td>${statusBadge(d.status)}</td>
       <td>${d.dpc_active ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</td>
+      <td style="font-size:12px;white-space:nowrap">${mdmComplianceCell(d.mdm_compliance)}</td>
       <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New</span>'}</td>
       <td>${d.loan?.days_overdue > 0 ? `<span style="color:var(--red)">${d.loan.days_overdue}d</span>` : '—'}</td>
       <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
@@ -426,6 +492,9 @@ async function openModal(mongoId) {
       <span class="detail-label">${label}</span>
       <span class="detail-value">${val}</span>
     </div>`).join('');
+
+  html += `<div style="margin:16px 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Permissions &amp; access (MDM)</div>`;
+  html += formatMdmComplianceModalHtml(d.mdm_compliance);
 
   $('#modal-body').innerHTML = html;
   $('#cmd-lock-reason').value = d.lock_reason || '';

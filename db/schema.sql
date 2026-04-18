@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS devices (
 
   last_seen                TIMESTAMPTZ,
   last_heartbeat           JSONB,
+  -- Snapshot from POST /device/heartbeat (mdm_compliance); also embedded in last_heartbeat for history
+  mdm_compliance           JSONB,
   device_info              JSONB,
   tamper_events            JSONB       NOT NULL DEFAULT '[]',
 
