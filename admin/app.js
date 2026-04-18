@@ -205,6 +205,7 @@ const TAMPER_ICONS = {
   DEVICE_MISMATCH:     '🎭',
   ADMIN_REVOKED:       '🔐',
   ADMIN_SILENT_REMOVE: '👻',
+  admin_silently_removed: '👻',
   SAFE_MODE_DETECTED:  '⚠️',
   HEARTBEAT_MISSING:   '💤',
   LOCK_SENT:           '🔒',
@@ -215,7 +216,14 @@ const TAMPER_ICONS = {
   HEARTBEAT_FAILED:    '❌',
   LOCK_BYPASS_ATTEMPT: '🚨',
   PASSCODE_SET:        '🔑',   // admin issued a PIN to this device
-  PASSCODE_CLEARED:    '🗝️'   // admin cleared the PIN from this device
+  PASSCODE_CLEARED:    '🗝️',   // admin cleared the PIN from this device
+  // Accessibility / on-device tamper events (see KopanowAccessibilityService)
+  settings_tamper_detected:        '🛡️',
+  factory_reset_settings_access:   '🏭',
+  settings_admin_screen_access:    '🔐',
+  settings_dangerous_screen_access: '⚠️',
+  force_stop_attempt:             '🛑',
+  REPEATED_WRONG_PIN:             '🔢'
 };
 
 async function loadDashboard() {
@@ -352,7 +360,10 @@ async function loadTamperLog() {
 }
 
 async function loadLoans() {
-  const data = await apiFetch(`${API}/loans?limit=100`);
+  const search = $('#search-input')?.value?.trim() || '';
+  const data = await apiFetch(
+    `${API}/loans?limit=100&search=${encodeURIComponent(search)}`
+  );
   if (!data.success) return;
   const tbody = $('#loans-tbody');
   tbody.innerHTML = data.loans.map(l => {
@@ -866,6 +877,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#cmd-lock').addEventListener('click',      () => modalCommand('LOCK_DEVICE'));
   $('#cmd-unlock').addEventListener('click',    () => modalCommand('UNLOCK_DEVICE'));
+  $('#cmd-stop-tamper').addEventListener('click', () => modalCommand('UNLOCK_DEVICE'));
   $('#cmd-remove').addEventListener('click',    () => modalCommand('REMOVE_ADMIN'));
   $('#cmd-heartbeat').addEventListener('click', () => modalCommand('HEARTBEAT_REQUEST'));
   $('#cmd-set-pin').addEventListener('click',   () => setPinForDevice());

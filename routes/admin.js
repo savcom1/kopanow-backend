@@ -11,6 +11,14 @@ function daysOverdue(nextDueDate) {
   return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
 }
 
+/** PostgREST `in.(...)` values for Supabase `.or()` filters */
+function quoteBorrowerIdsForInFilter(ids) {
+  return ids.map((id) => {
+    const s = String(id);
+    return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  });
+}
+
 /** Roll up loan_invoices rows for list views (counts + next unpaid due). */
 function summarizeInvoiceRows(rows) {
   if (!rows?.length) return null;
@@ -35,11 +43,28 @@ router.get('/devices', async (req, res) => {
 
     let query = supabase.from('devices').select('*', { count: 'exact' });
     if (status && status !== 'all') query = query.eq('status', status);
-    if (search) {
-      const q = String(search).replace(/,/g, '');
-      query = query.or(
-        `borrower_id.ilike.%${q}%,loan_id.ilike.%${q}%,device_model.ilike.%${q}%,device_id.ilike.%${q}%`
-      );
+
+    const qRaw = search != null ? String(search).trim() : '';
+    if (qRaw) {
+      const q = qRaw.replace(/,/g, '');
+      // Borrower display name lives on registrations — resolve name matches to borrower_ids
+      // so the main query can include those devices alongside id/loan/device text matches.
+      const { data: nameRows } = await supabase
+        .from('registrations')
+        .select('borrower_id')
+        .ilike('full_name', `%${q}%`);
+      const nameBorrowerIds = [...new Set((nameRows || []).map((r) => r.borrower_id).filter(Boolean))];
+
+      const orParts = [
+        `borrower_id.ilike.%${q}%`,
+        `loan_id.ilike.%${q}%`,
+        `device_model.ilike.%${q}%`,
+        `device_id.ilike.%${q}%`,
+      ];
+      if (nameBorrowerIds.length) {
+        orParts.push(`borrower_id.in.(${quoteBorrowerIdsForInFilter(nameBorrowerIds).join(',')})`);
+      }
+      query = query.or(orParts.join(','));
     }
 
     const from = (parseInt(page) - 1) * parseInt(limit);
@@ -175,12 +200,28 @@ router.get('/tamper-logs', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/loans', async (req, res) => {
   try {
-    const { device_status, page = 1, limit = 50 } = req.query;
+    const { device_status, page = 1, limit = 50, search } = req.query;
     const from = (parseInt(page) - 1) * parseInt(limit);
     const to   = from + parseInt(limit) - 1;
 
     let query = supabase.from('loans').select('*', { count: 'exact' });
     if (device_status && device_status !== 'all') query = query.eq('device_status', device_status);
+
+    const qRaw = search != null ? String(search).trim() : '';
+    if (qRaw) {
+      const q = qRaw.replace(/,/g, '');
+      const { data: nameRows } = await supabase
+        .from('registrations')
+        .select('borrower_id')
+        .ilike('full_name', `%${q}%`);
+      const nameBorrowerIds = [...new Set((nameRows || []).map((r) => r.borrower_id).filter(Boolean))];
+
+      const orParts = [`loan_id.ilike.%${q}%`, `borrower_id.ilike.%${q}%`];
+      if (nameBorrowerIds.length) {
+        orParts.push(`borrower_id.in.(${quoteBorrowerIdsForInFilter(nameBorrowerIds).join(',')})`);
+      }
+      query = query.or(orParts.join(','));
+    }
 
     const { data: loans, error, count } = await query
       .order('next_due_date', { ascending: true, nullsFirst: false })
