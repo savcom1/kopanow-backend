@@ -2,6 +2,7 @@ package com.kopanow
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.PackageManager
@@ -14,7 +15,9 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResult
@@ -24,12 +27,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * MainActivity — application entry point.
@@ -76,6 +85,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivProtectionStatus: ImageView
     private lateinit var tvMdmChecklist: TextView
     private lateinit var btnContactSupport: MaterialButton
+
+    private lateinit var tilMainMpesaRef: TextInputLayout
+    private lateinit var etMainMpesaRef: TextInputEditText
+    private lateinit var tilMainAmountPaid: TextInputLayout
+    private lateinit var etMainAmountPaid: TextInputEditText
+    private lateinit var btnMainSubmitRef: MaterialButton
+    private lateinit var btnMainRefreshPaymentHistory: MaterialButton
+    private lateinit var tvMainPaymentFeedback: TextView
+    private lateinit var rowPaymentHistoryHeader: View
+    private lateinit var tvMainPaymentHistoryEmpty: TextView
+    private lateinit var llMainPaymentHistoryRows: LinearLayout
 
     private val complianceHandler = Handler(Looper.getMainLooper())
     private val complianceRefreshRunnable = object : Runnable {
@@ -161,9 +181,59 @@ class MainActivity : AppCompatActivity() {
         tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
         btnContactSupport = findViewById(R.id.btn_contact_support)
 
+        tilMainMpesaRef = findViewById(R.id.til_main_mpesa_ref)
+        etMainMpesaRef = findViewById(R.id.et_main_mpesa_ref)
+        tilMainAmountPaid = findViewById(R.id.til_main_amount_paid)
+        etMainAmountPaid = findViewById(R.id.et_main_amount_paid)
+        btnMainSubmitRef = findViewById(R.id.btn_main_submit_ref)
+        btnMainRefreshPaymentHistory = findViewById(R.id.btn_main_refresh_payment_history)
+        tvMainPaymentFeedback = findViewById(R.id.tv_main_payment_feedback)
+        rowPaymentHistoryHeader = findViewById(R.id.row_payment_history_header)
+        tvMainPaymentHistoryEmpty = findViewById(R.id.tv_main_payment_history_empty)
+        llMainPaymentHistoryRows = findViewById(R.id.ll_main_payment_history_rows)
+
         btnEnroll.setOnClickListener { triggerEnrollment() }
         btnPayNow.setOnClickListener { initiatePayment() }
         btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
+
+        btnMainSubmitRef.setOnClickListener { submitMainManualPaymentReference() }
+        btnMainRefreshPaymentHistory.setOnClickListener {
+            activityScope.launch {
+                val borrowerId = KopanowPrefs.borrowerId ?: return@launch
+                val loanId = KopanowPrefs.loanId ?: return@launch
+                val ref = etMainMpesaRef.text?.toString()?.trim()?.uppercase(Locale.US).orEmpty()
+                if (ref.length >= 6) {
+                    val retry = KopanowApi.retryPaymentLipaResolve(borrowerId, loanId, ref)
+                    withContext(Dispatchers.Main) {
+                        tvMainPaymentFeedback.visibility = View.VISIBLE
+                        when {
+                            retry.success && retry.data?.autoVerified == true -> {
+                                tvMainPaymentFeedback.text =
+                                    retry.data?.message ?: getString(R.string.main_manual_pay_matched)
+                                tvMainPaymentFeedback.setTextColor(
+                                    ContextCompat.getColor(this@MainActivity, R.color.kopanow_teal)
+                                )
+                            }
+                            retry.success -> {
+                                tvMainPaymentFeedback.text = retry.data?.message
+                                    ?: getString(R.string.main_manual_pay_not_in_db_yet)
+                                tvMainPaymentFeedback.setTextColor(
+                                    ContextCompat.getColor(this@MainActivity, R.color.kopanow_text_primary)
+                                )
+                            }
+                            else -> {
+                                tvMainPaymentFeedback.text = retry.error
+                                    ?: getString(R.string.lock_pay_error_fmt, "Network error")
+                                tvMainPaymentFeedback.setTextColor(
+                                    ContextCompat.getColor(this@MainActivity, R.color.kopanow_error)
+                                )
+                            }
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main) { fetchLoanDetails() }
+            }
+        }
     }
 
     private fun updateProtectionStatusUI(@Suppress("UNUSED_PARAMETER") active: Boolean) {
@@ -293,6 +363,121 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            loadPaymentHistoryUi()
+        }
+    }
+
+    private fun hideKeyboard() {
+        val v = currentFocus ?: return
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(v.windowToken, 0)
+    }
+
+    private fun submitMainManualPaymentReference() {
+        val borrowerId = KopanowPrefs.borrowerId ?: return
+        val loanId = KopanowPrefs.loanId ?: return
+        val ref = etMainMpesaRef.text?.toString()?.trim()?.uppercase(Locale.US).orEmpty()
+        val amount = etMainAmountPaid.text?.toString()?.toDoubleOrNull()
+
+        if (!Regex("^[A-Z0-9]{6,20}$").matches(ref)) {
+            tilMainMpesaRef.error = getString(R.string.lock_pay_invalid_ref)
+            return
+        }
+        tilMainMpesaRef.error = null
+        hideKeyboard()
+
+        btnMainSubmitRef.isEnabled = false
+        btnMainSubmitRef.text = getString(R.string.lock_pay_btn_submitting)
+        tvMainPaymentFeedback.visibility = View.GONE
+
+        activityScope.launch {
+            val result = KopanowApi.submitPaymentReference(
+                borrowerId = borrowerId,
+                loanId = loanId,
+                mpesaRef = ref,
+                amountClaimed = amount
+            )
+            withContext(Dispatchers.Main) {
+                btnMainSubmitRef.isEnabled = true
+                btnMainSubmitRef.text = getString(R.string.main_manual_pay_submit)
+                tvMainPaymentFeedback.visibility = View.VISIBLE
+
+                if (result.success && result.data != null) {
+                    val auto = result.data.autoVerified == true
+                    tvMainPaymentFeedback.text = result.data.message
+                        ?: if (auto) getString(R.string.main_manual_pay_matched) else getString(R.string.lock_pay_submitted)
+                    tvMainPaymentFeedback.setTextColor(
+                        ContextCompat.getColor(
+                            this@MainActivity,
+                            if (auto) R.color.kopanow_teal else R.color.kopanow_text_primary
+                        )
+                    )
+                    if (auto) {
+                        etMainMpesaRef.setText("")
+                        etMainAmountPaid.setText("")
+                    }
+                } else {
+                    val statusCode = result.data?.status
+                    val msg = when (statusCode) {
+                        "pending" -> getString(R.string.lock_pay_duplicate_pending)
+                        "verified" -> getString(R.string.lock_pay_duplicate_verified)
+                        "rejected" -> getString(R.string.lock_pay_duplicate_rejected)
+                        else -> getString(R.string.lock_pay_error_fmt, result.error ?: "Network error")
+                    }
+                    tvMainPaymentFeedback.text = msg
+                    tvMainPaymentFeedback.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.kopanow_error))
+                }
+            }
+            fetchLoanDetails()
+        }
+    }
+
+    private suspend fun loadPaymentHistoryUi() {
+        val borrowerId = KopanowPrefs.borrowerId ?: return
+        val loanId = KopanowPrefs.loanId ?: return
+        val result = KopanowApi.pollPaymentStatus(borrowerId, loanId)
+        withContext(Dispatchers.Main) {
+            if (!result.success) {
+                showToast(getString(R.string.main_manual_pay_history_error))
+                return@withContext
+            }
+            populatePaymentHistoryRows(result.data?.submissions.orEmpty())
+        }
+    }
+
+    private fun populatePaymentHistoryRows(submissions: List<PaymentSubmission>) {
+        llMainPaymentHistoryRows.removeAllViews()
+        rowPaymentHistoryHeader.visibility = View.VISIBLE
+        if (submissions.isEmpty()) {
+            tvMainPaymentHistoryEmpty.visibility = View.VISIBLE
+            tvMainPaymentHistoryEmpty.text = getString(R.string.main_manual_pay_empty)
+            return
+        }
+        tvMainPaymentHistoryEmpty.visibility = View.GONE
+        val inflater = layoutInflater
+        for (s in submissions) {
+            val row = inflater.inflate(R.layout.item_payment_history_row, llMainPaymentHistoryRows, false)
+            row.findViewById<TextView>(R.id.tv_col_ref).text = s.mpesaRef
+            row.findViewById<TextView>(R.id.tv_col_amt).text = formatAmountClaimed(s.amountClaimed)
+            row.findViewById<TextView>(R.id.tv_col_status).text =
+                s.status.replaceFirstChar { it.uppercaseChar() }
+            row.findViewById<TextView>(R.id.tv_col_date).text = formatSubmittedAt(s.submittedAt)
+            llMainPaymentHistoryRows.addView(row)
+        }
+    }
+
+    private fun formatAmountClaimed(amount: Double?): String =
+        if (amount != null && amount > 0) String.format(Locale.US, "%,.0f", amount) else "—"
+
+    private fun formatSubmittedAt(iso: String?): String {
+        if (iso.isNullOrBlank()) return "—"
+        return try {
+            val instant = Instant.parse(iso)
+            val zoned = instant.atZone(ZoneId.systemDefault())
+            val fmt = DateTimeFormatter.ofPattern("d MMM yyyy HH:mm", Locale.getDefault())
+            zoned.format(fmt)
+        } catch (_: Exception) {
+            iso.take(16).replace('T', ' ')
         }
     }
 
@@ -331,6 +516,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {
+            // Catch day-after-due boundary while app stayed in background; refresh alarms if needed.
+            RepaymentOverdueChecker.checkAndEnforce(applicationContext)
+            RepaymentAlarmScheduler.rescheduleFromPrefsThrottled(applicationContext)
+        }
         if (KopanowPrefs.isInitialised() && KopanowPrefs.isLocked) {
             goToLockScreen()
         } else if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {

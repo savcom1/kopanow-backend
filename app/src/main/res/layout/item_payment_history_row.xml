@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="8dp">
+
+    <TextView
+        android:id="@+id/tv_col_ref"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:fontFamily="monospace"
+        android:textColor="@color/kopanow_text_primary"
+        android:textSize="12sp"
+        tools:text="RCK8XY1234" />
+
+    <TextView
+        android:id="@+id/tv_col_amt"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/kopanow_text_primary"
+        android:textSize="12sp"
+        tools:text="50000" />
+
+    <TextView
+        android:id="@+id/tv_col_status"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/kopanow_text_primary"
+        android:textSize="12sp"
+        tools:text="pending" />
+
+    <TextView
+        android:id="@+id/tv_col_date"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.2"
+        android:textColor="@color/kopanow_text_secondary"
+        android:textSize="11sp"
+        tools:text="18 Apr 2026 10:30" />
+</LinearLayout>

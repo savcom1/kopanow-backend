@@ -142,7 +142,15 @@ data class PaymentRefResponse(
     @SerializedName("message")   val message: String?,
     @SerializedName("mpesa_ref") val mpesaRef: String?,
     @SerializedName("error")     val error: String?,
-    @SerializedName("status")    val status: String?
+    @SerializedName("status")    val status: String?,
+    /** True when server matched [mpesa_ref] to [lipa_transactions] and applied the payment. */
+    @SerializedName("auto_verified") val autoVerified: Boolean? = null
+)
+
+data class PaymentRetryResolveRequest(
+    @SerializedName("borrower_id") val borrowerId: String,
+    @SerializedName("loan_id") val loanId: String,
+    @SerializedName("mpesa_ref") val mpesaRef: String
 )
 
 data class PaymentStatusResponse(
@@ -393,6 +401,18 @@ object KopanowApi {
         post(
             "/payment/submit",
             PaymentRefRequest(borrowerId, loanId, mpesaRef, amountClaimed, notes),
+            PaymentRefResponse::class.java
+        )
+
+    /** Re-check Supabase for this transaction ID after SMS ingest has stored it (unregistered payer flow). */
+    suspend fun retryPaymentLipaResolve(
+        borrowerId: String,
+        loanId: String,
+        mpesaRef: String
+    ): ApiResult<PaymentRefResponse> =
+        post(
+            "/payment/retry-resolve",
+            PaymentRetryResolveRequest(borrowerId, loanId, mpesaRef),
             PaymentRefResponse::class.java
         )
 

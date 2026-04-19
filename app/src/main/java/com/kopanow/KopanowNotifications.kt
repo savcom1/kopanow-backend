@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -14,6 +15,8 @@ import androidx.core.content.ContextCompat
  * requires [android.Manifest.permission.POST_NOTIFICATIONS] at runtime).
  */
 object KopanowNotifications {
+
+    private const val TAG = "KopanowNotif"
 
     const val CHANNEL_ALERTS = "kopanow_alerts"
     /** Local repayment reminders (AlarmManager) — works offline. */
@@ -73,7 +76,10 @@ object KopanowNotifications {
         text: String,
         contentIntent: PendingIntent?
     ) {
-        if (!canPostNotifications(context)) return
+        if (!canPostNotifications(context)) {
+            Log.w(TAG, "Repayment reminder skipped — notifications disabled or POST_NOTIFICATIONS not granted")
+            return
+        }
         ensureRepaymentChannel(context)
         val appCtx = context.applicationContext
         val builder = NotificationCompat.Builder(appCtx, CHANNEL_REPAYMENT)

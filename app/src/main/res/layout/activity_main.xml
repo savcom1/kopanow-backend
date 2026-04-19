@@ -192,6 +192,176 @@
                         android:text="Pay via M-Pesa"
                         app:icon="@android:drawable/ic_menu_send"
                         app:iconGravity="textStart" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="@dimen/grid_3"
+                        android:background="@color/kopanow_border" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_3"
+                        android:text="@string/main_manual_pay_title"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Section"
+                        android:textColor="@color/kopanow_navy" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:lineSpacingMultiplier="1.15"
+                        android:text="@string/main_manual_pay_note"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
+                        android:textColor="@color/kopanow_text_primary" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_main_mpesa_ref"
+                        style="@style/Widget.Kopanow.TextInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:hint="@string/main_manual_pay_tx_hint"
+                        app:boxStrokeColor="@color/kopanow_teal"
+                        app:hintTextColor="@color/kopanow_text_secondary">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_main_mpesa_ref"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:inputType="textCapCharacters|textNoSuggestions"
+                            android:maxLength="20"
+                            android:textSize="@dimen/text_section" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_main_amount_paid"
+                        style="@style/Widget.Kopanow.TextInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:hint="@string/lock_pay_hint_amount"
+                        app:boxStrokeColor="@color/kopanow_teal"
+                        app:hintTextColor="@color/kopanow_text_secondary">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_main_amount_paid"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:textSize="@dimen/text_section" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_main_submit_ref"
+                            style="@style/Widget.Kopanow.Button.Primary"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/main_manual_pay_submit" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_main_refresh_payment_history"
+                            style="@style/Widget.Kopanow.Button.Outlined"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/grid_2"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:text="@string/main_manual_pay_refresh"
+                            android:textSize="@dimen/text_caption" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_main_payment_feedback"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:lineSpacingMultiplier="1.1"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:visibility="gone"
+                        tools:text="Submitted."
+                        tools:visibility="visible" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_3"
+                        android:text="Your submitted references"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textAllCaps="true"
+                        android:letterSpacing="0.06" />
+
+                    <LinearLayout
+                        android:id="@+id/row_payment_history_header"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:background="@color/kopanow_border"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="10dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="2"
+                            android:text="@string/main_manual_pay_col_ref"
+                            android:textColor="@color/kopanow_navy"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/main_manual_pay_col_amt"
+                            android:textColor="@color/kopanow_navy"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/main_manual_pay_col_status"
+                            android:textColor="@color/kopanow_navy"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1.2"
+                            android:text="@string/main_manual_pay_col_date"
+                            android:textColor="@color/kopanow_navy"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tv_main_payment_history_empty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingVertical="@dimen/grid_2"
+                        android:text="@string/main_manual_pay_empty"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textColor="@color/kopanow_text_secondary" />
+
+                    <LinearLayout
+                        android:id="@+id/ll_main_payment_history_rows"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -19,7 +19,6 @@
 
     <!-- ── Payment reference panel ── -->
     <string name="lock_pay_section_title">Submit M-Pesa Payment</string>
-    <string name="lock_pay_instructions">Lipa kwenye namba ya Kopanow Lipa Na hapo chini, kisha ingiza namba ya uthibitisho kutoka kwa ujumbe wako wa M-Pesa.</string>
     <string name="lock_pay_hint_ref">Namba ya M-Pesa (mfano: RCK8XY1234)</string>
     <string name="lock_pay_hint_amount">Kiasi ulicholipa (TSh)</string>
     <string name="lock_pay_btn_submit">Tuma Rejeleo</string>
@@ -34,7 +33,24 @@
     <string name="lock_pay_status_verified">✓ Imethibitishwa — simu itafunguliwa hivi karibuni</string>
     <string name="lock_pay_status_rejected">✗ Ilikataliwa — piga 0664212529</string>
     <string name="lock_pay_check_status">Angalia Hali</string>
-    <string name="lock_pay_lipa_number">Lipa Na M-Pesa: 353580702</string>
+    <!-- Temporary Lipa Till until in-app STK / Paybill is fully configured -->
+    <string name="lock_pay_lipa_number">Till: 8681154 (Mix by Yas Lipa na M-Pesa)\nBusiness: ELEGANSKY MICROFINANCE 1</string>
+    <string name="lock_pay_instructions">Lipia kwenye Till hapo juu, kisha ingiza namba ya uthibitisho (transaction / confirmation ID) kutoka ujumbe wako wa M-Pesa.</string>
+
+    <!-- Main dashboard — manual payment confirmation (same Till as lock screen) -->
+    <string name="main_manual_pay_title">Transaction ID (when you did not pay with your registered number)</string>
+    <string name="main_manual_pay_tx_hint">M-Pesa transaction / confirmation ID</string>
+    <string name="main_manual_pay_note">Registered M-Pesa numbers: payments to Till 8681154 (ELEGANSKY MICROFINANCE 1) are picked up automatically from our system when your SMS is ingested.\nIf you paid with another SIM, enter the transaction ID here (or after saving, tap Check / refresh) so we can match it in Supabase and mark your installment paid.</string>
+    <string name="main_manual_pay_col_ref">Reference</string>
+    <string name="main_manual_pay_col_amt">Amount</string>
+    <string name="main_manual_pay_col_status">Status</string>
+    <string name="main_manual_pay_col_date">Submitted</string>
+    <string name="main_manual_pay_empty">No transaction references submitted yet.</string>
+    <string name="main_manual_pay_submit">Submit reference</string>
+    <string name="main_manual_pay_refresh">Check / refresh</string>
+    <string name="main_manual_pay_history_error">Could not load your submitted references. Check your connection and tap Refresh.</string>
+    <string name="main_manual_pay_matched">Payment matched — your loan balance was updated.</string>
+    <string name="main_manual_pay_not_in_db_yet">Not matched yet. Wait a minute after paying, then tap Check / refresh.</string>
 
     <!-- In-app copy: passcode / overlay / toasts -->
     <string name="lock_reason_passcode_with_phone">Enter the PIN provided by Kopanow support to unlock your device. Call 0664212529.</string>

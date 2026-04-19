@@ -11,7 +11,7 @@ import java.time.ZoneId
  * day after due @ 08:00 local has passed and invoice still unpaid → local PIN lock.
  *
  * **Offline paths:** [RepaymentAlarmReceiver] (exact alarm), [BootReceiver], [HeartbeatWorker]
- * (periodic work no longer requires network), [MainActivity] on launch.
+ * (periodic work no longer requires network), [MainActivity] on launch and on resume.
  */
 object RepaymentOverdueChecker {
 

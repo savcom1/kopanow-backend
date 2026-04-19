@@ -17,9 +17,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * HeartbeatWorker — 24-hour periodic WorkManager worker.
+ * HeartbeatWorker — periodic WorkManager worker ([HeartbeatScheduler] uses the minimum 15-minute interval).
  *
- * Every 24 hours this worker POSTs a device telemetry snapshot to the backend
+ * On each run this worker POSTs a device telemetry snapshot to the backend
  * so the server can:
  *  • Confirm the device is still under MDM control (`dpc_active`)
  *  • Detect Scenario 3 abuse: safe-mode boot, device-ID mismatch
@@ -42,8 +42,8 @@ import kotlinx.coroutines.withContext
  * | `REMOVE_ADMIN` | Self-remove device admin (loan closed / repaid in full)   |
  * | null / missing | No change; sync `isLocked` locally                       |
  *
- * Scheduling lives in [HeartbeatScheduler] (24 h periodic, CANCEL_AND_REENQUEUE
- * on update so the interval resets cleanly after a reboot).
+ * Scheduling lives in [HeartbeatScheduler] (15 min periodic, WorkManager minimum;
+ * UPDATE policy so the interval resets cleanly after a reboot).
  */
 class HeartbeatWorker(
     private val context: Context,
