@@ -2,19 +2,15 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../helpers/supabase');
-const { sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
-const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
-const {
-  applyPaymentToInvoices,
-  refreshLoanNextDueDate,
-} = require('../helpers/loanInvoices');
+const { applyVerifiedMpesaAmount, tryResolveFromLipaTable } = require('../helpers/lipaPayment');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/payment/submit
 //
-// Borrower submits their M-Pesa transaction reference from their phone's
-// M-Pesa statement.  The reference is stored as "pending" for admin review.
-// The device is NOT unlocked here — an admin must verify first.
+// Borrower submits M-Pesa transaction / confirmation ID.
+// If the row already exists in lipa_transactions (from your SMS ingest app),
+// the loan is settled automatically — no admin step.
+// Otherwise stays pending until SMS arrives + user taps retry-resolve or admin verifies.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/submit', async (req, res) => {
   try {
@@ -71,8 +67,7 @@ router.post('/submit', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Device not registered' });
     }
 
-    // Insert pending reference
-    const { error: insertErr } = await supabase
+    const { data: inserted, error: insertErr } = await supabase
       .from('payment_references')
       .insert({
         borrower_id,
@@ -82,15 +77,42 @@ router.post('/submit', async (req, res) => {
         notes:          notes || null,
         submitted_at:   new Date().toISOString(),
         status:         'pending'
-      });
+      })
+      .select('id')
+      .single();
 
     if (insertErr) throw insertErr;
 
-    console.log(`[payment/submit] borrower=${borrower_id} ref=${ref} amount=${amount_claimed}`);
+    let tryResult;
+    try {
+      tryResult = await tryResolveFromLipaTable({
+        borrower_id,
+        loan_id,
+        mpesa_ref: ref,
+        payment_reference_id: inserted.id,
+      });
+    } catch (e) {
+      console.error('[payment/submit] tryResolveFromLipaTable', e.message);
+      tryResult = { resolved: false };
+    }
+
+    if (tryResult.conflict) {
+      return res.status(409).json({
+        success: false,
+        error: tryResult.conflict,
+        mpesa_ref: ref,
+      });
+    }
+
+    const autoVerified = tryResult.resolved === true;
+    console.log(`[payment/submit] borrower=${borrower_id} ref=${ref} auto_verified=${autoVerified}`);
     return res.json({
       success: true,
-      message: 'Payment reference submitted. Kopanow admin will verify and unlock your device shortly.',
-      mpesa_ref: ref
+      message: autoVerified
+        ? 'Payment found in M-Pesa records. Your loan balance has been updated.'
+        : 'Reference saved. If you paid with a number not on file, we will match it when the transaction appears (usually within a minute). You can tap “Check payment” to retry.',
+      mpesa_ref: ref,
+      auto_verified: autoVerified,
     });
 
   } catch (err) {
@@ -128,6 +150,68 @@ router.get('/status', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/payment/retry-resolve
+//
+// Call when SMS ingest has landed in lipa_transactions after the user submitted ref.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/retry-resolve', async (req, res) => {
+  try {
+    const { borrower_id, loan_id, mpesa_ref } = req.body;
+    if (!borrower_id || !loan_id || !mpesa_ref) {
+      return res.status(400).json({
+        success: false,
+        error: 'borrower_id, loan_id and mpesa_ref are required',
+      });
+    }
+    const ref = mpesa_ref.toString().trim().toUpperCase();
+
+    const { data: pref, error: pErr } = await supabase
+      .from('payment_references')
+      .select('id, status')
+      .eq('borrower_id', borrower_id)
+      .eq('loan_id', loan_id)
+      .eq('mpesa_ref', ref)
+      .maybeSingle();
+
+    if (pErr) throw pErr;
+    if (!pref) {
+      return res.status(404).json({ success: false, error: 'No submission found for this reference' });
+    }
+    if (pref.status === 'verified') {
+      return res.json({
+        success: true,
+        auto_verified: true,
+        message: 'This payment was already verified.',
+        mpesa_ref: ref,
+      });
+    }
+
+    const tryResult = await tryResolveFromLipaTable({
+      borrower_id,
+      loan_id,
+      mpesa_ref: ref,
+      payment_reference_id: pref.id,
+    });
+
+    if (tryResult.conflict) {
+      return res.status(409).json({ success: false, error: tryResult.conflict, mpesa_ref: ref });
+    }
+
+    return res.json({
+      success: true,
+      auto_verified: tryResult.resolved === true,
+      message: tryResult.resolved
+        ? 'Payment matched. Your loan balance has been updated.'
+        : 'Transaction not found yet. Wait a short time after paying, then try again.',
+      mpesa_ref: ref,
+    });
+  } catch (err) {
+    console.error('[payment/retry-resolve]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/payment/verify/:id    (admin only — called from admin panel)
 //
 // Admin confirms the M-Pesa reference is genuine.
@@ -151,98 +235,26 @@ router.post('/verify/:id', async (req, res) => {
       return res.status(409).json({ success: false, error: `Already ${ref.status}` });
     }
 
-    // Use admin-supplied amount; fall back to borrower's claimed amount
     const paid = Number(amount_paid || ref.amount_claimed || 0);
 
-    // Fetch device + loan
-    const { data: device } = await supabase
-      .from('devices')
-      .select('id, fcm_token, is_locked, amount_due')
-      .eq('borrower_id', ref.borrower_id)
-      .eq('loan_id', ref.loan_id)
-      .maybeSingle();
+    const result = await applyVerifiedMpesaAmount({
+      borrower_id: ref.borrower_id,
+      loan_id: ref.loan_id,
+      mpesa_ref: ref.mpesa_ref,
+      amount: paid,
+      verified_by: verified_by || 'admin',
+      reviewer_note: reviewer_note || null,
+      payment_reference_id: ref.id,
+      raw_callback: { source: 'manual_reference', verified_by: verified_by || 'admin' },
+    });
 
-    const { data: loan } = await supabase
-      .from('loans')
-      .select('id, outstanding_amount')
-      .eq('loan_id', ref.loan_id)
-      .maybeSingle();
-
-    const outstanding    = Number(loan?.outstanding_amount || 0);
-    const newOutstanding = Math.max(0, outstanding - paid);
-
-    // Mark reference as verified
-    await supabase.from('payment_references').update({
-      status:        'verified',
-      verified_by:   verified_by || 'admin',
-      verified_at:   new Date().toISOString(),
-      reviewer_note: reviewer_note || null
-    }).eq('id', id);
-
-    // Record in payments table for audit trail
-    await supabase.from('payments').upsert({
-      mpesa_ref:    ref.mpesa_ref,
-      loan_id:      ref.loan_id,
-      borrower_id:  ref.borrower_id,
-      amount:       paid,
-      paid_at:      new Date().toISOString(),
-      is_processed: true,
-      raw_callback: { source: 'manual_reference', verified_by: verified_by || 'admin' }
-    }, { onConflict: 'mpesa_ref' });
-
-    // Mark matching weekly invoices as paid (oldest first)
-    await applyPaymentToInvoices(ref.loan_id, paid);
-    await refreshLoanNextDueDate(ref.loan_id);
-
-    // Update loan outstanding
-    if (loan) {
-      await supabase.from('loans').update({
-        outstanding_amount: newOutstanding,
-        device_status: newOutstanding <= 0 ? 'admin_removed' : 'active',
-        updated_at: new Date().toISOString()
-      }).eq('id', loan.id);
-    }
-
-    // FCM action based on remaining balance
-    if (device) {
-      if (newOutstanding <= 0) {
-        // Fully paid — release device admin
-        if (device.fcm_token) await sendRemoveAdminCommand(device.fcm_token);
-        await supabase.from('devices').update({
-          is_locked:   false,
-          status:      'admin_removed',
-          lock_reason: null,
-          amount_due:  null,
-          updated_at:  new Date().toISOString()
-        }).eq('id', device.id);
-        await logTamper(ref.borrower_id, ref.loan_id, EVENT_TYPES.PAYMENT_RECEIVED, {
-          source: 'manual_ref', detail: `Full repayment TSh ${paid.toLocaleString()} (ref: ${ref.mpesa_ref})`,
-          auto_action: 'REMOVE_ADMIN'
-        });
-      } else {
-        // Partial / overdue cleared — unlock
-        if (device.is_locked && device.fcm_token) await sendUnlockCommand(device.fcm_token);
-        await supabase.from('devices').update({
-          is_locked:   false,
-          status:      'active',
-          amount_due:  `TSh ${newOutstanding.toLocaleString()}`,
-          updated_at:  new Date().toISOString()
-        }).eq('id', device.id);
-        await logTamper(ref.borrower_id, ref.loan_id, EVENT_TYPES.PAYMENT_RECEIVED, {
-          source: 'manual_ref',
-          detail: `Partial TSh ${paid.toLocaleString()}, remaining TSh ${newOutstanding.toLocaleString()} (ref: ${ref.mpesa_ref})`,
-          auto_action: 'UNLOCK_DEVICE'
-        });
-      }
-    }
-
-    console.log(`[payment/verify] ✓ ref=${ref.mpesa_ref} paid=${paid} remaining=${newOutstanding} by=${verified_by}`);
+    console.log(`[payment/verify] ✓ ref=${ref.mpesa_ref} paid=${paid} remaining=${result.remaining} by=${verified_by}`);
     return res.json({
       success:      true,
       mpesa_ref:    ref.mpesa_ref,
-      amount_paid:  paid,
-      remaining:    newOutstanding,
-      action:       newOutstanding <= 0 ? 'REMOVE_ADMIN' : 'UNLOCK_DEVICE'
+      amount_paid:  result.amount_paid,
+      remaining:    result.remaining,
+      action:       result.action,
     });
 
   } catch (err) {

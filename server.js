@@ -55,6 +55,7 @@ const provisionRoutes = require('./routes/provision');
 const loanRoutes      = require('./routes/loan');
 const notifyRoutes    = require('./routes/notify');
 const mpesaRoutes     = require('./routes/mpesa');
+const lipaRoutes      = require('./routes/lipa-ingest');
 const { startPaymentScheduler } = require('./cron/jobs');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ app.use('/api/provision', provisionRoutes);
 app.use('/api/loan',      loanRoutes);
 app.use('/api/notify',    notifyRoutes);
 app.use('/api/mpesa',     mpesaRoutes);
+app.use('/api/lipa',      lipaRoutes);
 
 // Serve APK for QR-code provisioning downloads
 // Place the signed APK at ./public/kopanow.apk  OR set APK_DOWNLOAD_URL to an external URL
@@ -155,7 +157,8 @@ async function startServer() {
     console.log(`[server] Admin UI  → http://localhost:${PORT}/admin`);
     console.log(`[server] Health    → http://localhost:${PORT}/health`);
     console.log(`[server] Device API:  /api/device/{enrollment-check,register,heartbeat,tamper,status,fcm-token}`);
-    console.log(`[server] Payment API: /api/payment/{submit,status,verify/:id,reject/:id,pending}`);
+    console.log(`[server] Payment API: /api/payment/{submit,status,retry-resolve,verify/:id,reject/:id,pending}`);
+    console.log(`[server] Lipa SMS API: POST /api/lipa/transactions (X-Lipa-Ingest-Secret)`);
     console.log(`[server] AzamPay API:   POST /api/mpesa/stk-push`);
     console.log(`[server] Admin API:   /api/admin/{devices,devices/:id,loans,loans/:loanId/invoices,tamper-logs,command}`);
     console.log(`[server] PIN API:     /api/pin/{set,clear,verify}`);
