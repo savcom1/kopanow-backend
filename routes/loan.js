@@ -8,6 +8,8 @@ const {
   createInvoicesForLoan,
 } = require('../helpers/loanInvoices');
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
 function generateLoanId() {
   // Human-readable-ish unique loan id
   return `LN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -163,11 +165,23 @@ router.post('/request', async (req, res) => {
       }, { onConflict: 'borrower_id,loan_id' });
     if (devUpsertErr) throw devUpsertErr;
 
+    const scheduleStart = new Date(now);
+    const firstRepayment = new Date(scheduleStart.getTime() + WEEK_MS);
+    const lastRepayment = new Date(scheduleStart.getTime() + schedule.weeks * WEEK_MS);
+    const contractNumber = `KN-${String(loan_id).replace(/[^A-Za-z0-9]/g, '').slice(-10)}-${Date.now().toString(36).toUpperCase()}`;
+
     return res.json({
       success: true,
       message: 'Loan request submitted.',
       borrower_id,
-      loan_id
+      loan_id,
+      contract_number: contractNumber,
+      total_repayment_tzs: Math.round(schedule.totalRepayment),
+      weekly_installment_tzs: Math.round(schedule.weekly),
+      num_weeks: schedule.weeks,
+      loan_start_date: scheduleStart.toISOString(),
+      first_repayment_date: firstRepayment.toISOString(),
+      last_repayment_date: lastRepayment.toISOString(),
     });
   } catch (err) {
     const msg = err?.message || 'Internal server error';
@@ -176,67 +190,51 @@ router.post('/request', async (req, res) => {
   }
 });
 
-// POST /api/loan/contract-acceptance
-// Persists electronic contract acceptance from KopaNow ContractActivity.
+// POST /api/loan/contract-acceptance — store electronic contract (Android ContractActivity)
 router.post('/contract-acceptance', async (req, res) => {
   try {
     const b = req.body || {};
-    const required = [
-      'contract_number', 'loan_id', 'borrower_id', 'borrower_name',
-      'loan_amount_tzs', 'total_repayment_tzs', 'weekly_installment_tzs', 'num_weeks',
-      'loan_start_at', 'first_repayment_at', 'last_repayment_at',
-    ];
-    for (const k of required) {
-      if (b[k] == null || b[k] === '') {
-        return res.status(400).json({ success: false, message: `Missing: ${k}` });
-      }
+    const contract_number = b.contract_number != null ? String(b.contract_number).trim() : '';
+    const loan_id = b.loan_id != null ? String(b.loan_id).trim() : '';
+    const borrower_id = b.borrower_id != null ? String(b.borrower_id).trim() : '';
+    if (!contract_number || !loan_id || !borrower_id) {
+      return res.status(400).json({ success: false, message: 'contract_number, loan_id, and borrower_id are required.' });
     }
 
     const row = {
-      contract_number: String(b.contract_number).trim(),
-      loan_id: String(b.loan_id).trim(),
-      borrower_id: String(b.borrower_id).trim(),
-      borrower_name: String(b.borrower_name).trim(),
-      borrower_phone: b.borrower_phone != null ? String(b.borrower_phone).trim() : null,
-      borrower_region: b.borrower_region != null ? String(b.borrower_region).trim() : null,
-      loan_amount_tzs: Number(b.loan_amount_tzs),
-      total_repayment_tzs: Number(b.total_repayment_tzs),
-      weekly_installment_tzs: Number(b.weekly_installment_tzs),
-      num_weeks: parseInt(b.num_weeks, 10),
-      loan_start_at: new Date(b.loan_start_at).toISOString(),
-      first_repayment_at: new Date(b.first_repayment_at).toISOString(),
-      last_repayment_at: new Date(b.last_repayment_at).toISOString(),
-      device_android_model: b.device_android_model != null ? String(b.device_android_model).trim() : null,
-      imei: b.imei != null ? String(b.imei).trim() : null,
-      serial_number: b.serial_number != null ? String(b.serial_number).trim() : null,
-      google_account: b.google_account != null ? String(b.google_account).trim() : null,
-      device_id: b.device_id != null ? String(b.device_id).trim() : null,
-      app_version: b.app_version != null ? String(b.app_version).trim() : null,
-      accepted_at: b.accepted_at ? new Date(b.accepted_at).toISOString() : new Date().toISOString(),
+      contract_number,
+      loan_id,
+      borrower_id,
+      borrower_name: b.borrower_name ?? null,
+      borrower_phone: b.borrower_phone ?? null,
+      borrower_region: b.borrower_region ?? null,
+      loan_amount_tzs: b.loan_amount_tzs != null ? parseInt(b.loan_amount_tzs, 10) : null,
+      total_repayment_tzs: b.total_repayment_tzs != null ? parseInt(b.total_repayment_tzs, 10) : null,
+      weekly_installment_tzs: b.weekly_installment_tzs != null ? parseInt(b.weekly_installment_tzs, 10) : null,
+      num_weeks: b.num_weeks != null ? parseInt(b.num_weeks, 10) : null,
+      loan_start_date: b.loan_start_date ?? null,
+      first_repayment_date: b.first_repayment_date ?? null,
+      last_repayment_date: b.last_repayment_date ?? null,
+      device_android_model: b.device_android_model ?? null,
+      device_imei: b.device_imei ?? null,
+      device_serial: b.device_serial ?? null,
+      google_account: b.google_account ?? null,
+      android_device_id: b.android_device_id ?? null,
+      app_version: b.app_version ?? null,
+      accepted_at: b.accepted_at || new Date().toISOString(),
     };
 
-    if (!Number.isFinite(row.loan_amount_tzs) || row.num_weeks < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid amounts or num_weeks' });
-    }
-
-    const { data, error } = await supabase
-      .from('contract_acceptances')
-      .insert(row)
-      .select('id')
-      .maybeSingle();
-
+    const { error } = await supabase.from('contract_acceptances').insert(row);
     if (error) {
-      if (error.code === '23505') {
-        return res.status(409).json({ success: false, message: 'Contract number already recorded' });
+      if (String(error.message || '').includes('duplicate') || String(error.code) === '23505') {
+        return res.status(409).json({ success: false, message: 'Contract number already recorded.' });
       }
       throw error;
     }
-
-    return res.json({ success: true, id: data?.id, message: 'Contract acceptance saved' });
+    return res.json({ success: true, message: 'Contract acceptance saved.', contract_number });
   } catch (err) {
-    const msg = err?.message || 'Internal server error';
-    console.error('[loan:contract-acceptance]', msg);
-    return res.status(500).json({ success: false, message: msg });
+    console.error('[loan:contract-acceptance]', err.message);
+    return res.status(500).json({ success: false, message: err.message || 'Internal server error' });
   }
 });
 
