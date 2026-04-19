@@ -1,4 +1,5 @@
 -- Electronic loan contract acceptances (KopaNow app — ContractActivity)
+-- Acceptance is scroll + tap only; borrower-entered device/Google fields are not stored.
 -- Run in Supabase SQL Editor if the table does not exist yet.
 
 CREATE TABLE IF NOT EXISTS contract_acceptances (
@@ -19,11 +20,6 @@ CREATE TABLE IF NOT EXISTS contract_acceptances (
   loan_start_date           TIMESTAMPTZ,
   first_repayment_date      TIMESTAMPTZ,
   last_repayment_date       TIMESTAMPTZ,
-
-  device_android_model      TEXT,
-  device_imei               TEXT,
-  device_serial             TEXT,
-  google_account            TEXT,
 
   android_device_id         TEXT,
   app_version               TEXT,
