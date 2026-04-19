@@ -1,14 +1,9 @@
 pluginManagement {
     repositories {
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
-        mavenCentral()
+        // Kotlin (org.jetbrains.*) + Android plugins — Gradle Plugin Portal resolves kapt
         gradlePluginPortal()
+        google()
+        mavenCentral()
     }
 }
 plugins {

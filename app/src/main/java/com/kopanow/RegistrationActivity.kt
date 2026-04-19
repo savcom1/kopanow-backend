@@ -9,7 +9,9 @@ import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.kopanow.contract.ContractActivity
 import androidx.core.widget.doOnTextChanged
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
@@ -32,6 +34,22 @@ class RegistrationActivity : AppCompatActivity() {
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
+
+    private val contractLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == RESULT_OK) {
+            KopanowLockService.start(this)
+            HeartbeatScheduler.schedule(this)
+            startActivity(Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            })
+            finish()
+        } else {
+            findViewById<TextView>(R.id.tv_request_status).text =
+                "Mkataba haukukamilika. Unaweza kujaribu tena au kuwasiliana na msaada."
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -214,13 +232,33 @@ class RegistrationActivity : AppCompatActivity() {
                         KopanowPrefs.isLoanRequestSubmitted = true
                         tvStatus.text = result.data.message ?: "Request submitted successfully."
 
-                        KopanowLockService.start(this@RegistrationActivity)
-                        HeartbeatScheduler.schedule(this@RegistrationActivity)
-
-                        startActivity(Intent(this@RegistrationActivity, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        })
-                        finish()
+                        val dr = result.data
+                        val loanId = dr.loanId ?: return@withContext
+                        val borrowerId = dr.borrowerId ?: KopanowPrefs.borrowerId ?: return@withContext
+                        val totalRep = dr.totalRepaymentTzs?.let { kotlin.math.round(it).toLong() }
+                            ?: (amount * totalRepaymentMultiplier(repaymentMonths)).roundToLong()
+                        val weekly = dr.weeklyInstallmentTzs?.let { kotlin.math.round(it).toLong() }
+                            ?: estimatedWeeklyInstallmentTzs(amount, repaymentMonths)
+                        val weeks = dr.numWeeks ?: (repaymentMonths * 4)
+                        val cNum = dr.contractNumber ?: "KN-$loanId"
+                        val i = Intent(this@RegistrationActivity, ContractActivity::class.java)
+                        ContractActivity.putExtras(
+                            intent = i,
+                            loanId = loanId,
+                            borrowerId = borrowerId,
+                            borrowerName = fullName,
+                            borrowerPhone = phone,
+                            borrowerRegion = region,
+                            loanAmount = amount,
+                            totalRepayment = totalRep,
+                            weeklyInstallment = weekly,
+                            numWeeks = weeks,
+                            loanStart = dr.loanStartDate.orEmpty(),
+                            firstRepay = dr.firstRepaymentDate.orEmpty(),
+                            lastRepay = dr.lastRepaymentDate.orEmpty(),
+                            contractNumber = cNum,
+                        )
+                        contractLauncher.launch(i)
                     } else {
                         KopanowPrefs.isLoanRequestSubmitted = false
                         tvStatus.text = result.data?.message ?: (result.error ?: "Request failed. Please try again.")

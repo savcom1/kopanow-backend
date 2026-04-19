@@ -1,11 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-
-    // Add the Google services Gradle plugin
-    id("com.google.gms.google-services")
+    id("org.jetbrains.kotlin.kapt") version "2.0.21"
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.kotlin.kapt")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -24,7 +23,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true   // Obfuscate — MDM app must not be easily reversible
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -35,8 +34,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    kotlinOptions {
+        jvmTarget = "11"
+    }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -67,7 +70,7 @@ dependencies {
     // Firebase Analytics
     implementation("com.google.firebase:firebase-analytics")
 
-    // Firebase Messaging (version managed by BoM)
+    // Firebase Messaging
     implementation("com.google.firebase:firebase-messaging")
 
     // WorkManager
@@ -78,7 +81,7 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1") // Firebase Task.await()
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // AppCompat
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -99,9 +102,8 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.52")
     kapt("com.google.dagger:hilt-compiler:2.52")
 
-    // ViewModel + Activity (contract flow)
+    // ViewModel + Activity
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
 }

@@ -204,29 +204,37 @@ data class LoanRequestResponse(
     @SerializedName("success") val success: Boolean,
     @SerializedName("message") val message: String?,
     @SerializedName("borrower_id") val borrowerId: String?,
-    @SerializedName("loan_id") val loanId: String?
+    @SerializedName("loan_id") val loanId: String?,
+    @SerializedName("contract_number") val contractNumber: String? = null,
+    /** JSON numbers may deserialize as Double when using Gson ToNumberPolicy. */
+    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Double? = null,
+    @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Double? = null,
+    @SerializedName("num_weeks") val numWeeks: Int? = null,
+    @SerializedName("loan_start_date") val loanStartDate: String? = null,
+    @SerializedName("first_repayment_date") val firstRepaymentDate: String? = null,
+    @SerializedName("last_repayment_date") val lastRepaymentDate: String? = null,
 )
 
-/** POST /loan/contract-acceptance — electronic contract stored in Supabase [contract_acceptances]. */
+/** POST /loan/contract-acceptance — stored in Supabase [contract_acceptances]. */
 data class ContractAcceptanceRequest(
     @SerializedName("contract_number") val contractNumber: String,
     @SerializedName("loan_id") val loanId: String,
     @SerializedName("borrower_id") val borrowerId: String,
-    @SerializedName("borrower_name") val borrowerName: String,
+    @SerializedName("borrower_name") val borrowerName: String?,
     @SerializedName("borrower_phone") val borrowerPhone: String?,
     @SerializedName("borrower_region") val borrowerRegion: String?,
-    @SerializedName("loan_amount_tzs") val loanAmountTzs: Long,
-    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long,
-    @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Long,
-    @SerializedName("num_weeks") val numWeeks: Int,
-    @SerializedName("loan_start_at") val loanStartAt: String,
-    @SerializedName("first_repayment_at") val firstRepaymentAt: String,
-    @SerializedName("last_repayment_at") val lastRepaymentAt: String,
-    @SerializedName("device_android_model") val deviceAndroidModel: String,
-    @SerializedName("imei") val imei: String,
-    @SerializedName("serial_number") val serialNumber: String,
-    @SerializedName("google_account") val googleAccount: String,
-    @SerializedName("device_id") val deviceId: String?,
+    @SerializedName("loan_amount_tzs") val loanAmountTzs: Long?,
+    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long?,
+    @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Long?,
+    @SerializedName("num_weeks") val numWeeks: Int?,
+    @SerializedName("loan_start_date") val loanStartDate: String?,
+    @SerializedName("first_repayment_date") val firstRepaymentDate: String?,
+    @SerializedName("last_repayment_date") val lastRepaymentDate: String?,
+    @SerializedName("device_android_model") val deviceAndroidModel: String?,
+    @SerializedName("device_imei") val deviceImei: String?,
+    @SerializedName("device_serial") val deviceSerial: String?,
+    @SerializedName("google_account") val googleAccount: String?,
+    @SerializedName("android_device_id") val androidDeviceId: String?,
     @SerializedName("app_version") val appVersion: String?,
     @SerializedName("accepted_at") val acceptedAt: String,
 )
@@ -234,7 +242,7 @@ data class ContractAcceptanceRequest(
 data class ContractAcceptanceResponse(
     @SerializedName("success") val success: Boolean,
     @SerializedName("message") val message: String?,
-    @SerializedName("id") val id: String?,
+    @SerializedName("contract_number") val contractNumber: String? = null,
 )
 
 data class SystemPinReportRequest(
