@@ -1,5 +1,20 @@
 <resources>
     <string name="app_name">Kopanow</string>
+    <string name="contract_screen_title">Makubaliano ya mkopo wa KopaNow</string>
+    <string name="contract_section3_title">(3) RATIBA YA MALIPO</string>
+    <string name="contract_section3_intro">Jedwali lifuatalo linaonyesha wiki, tarehe ya malipo, na kiasi cha TZS kwa kila wiki.</string>
+    <string name="contract_hint_device_model">Muundo wa simu ya Android</string>
+    <string name="contract_hint_imei">Nambari ya IMEI</string>
+    <string name="contract_hint_serial">Nambari ya serial</string>
+    <string name="contract_hint_google">Akaunti ya Gmail / Google</string>
+    <string name="contract_scroll_hint">Soma mkataba hadi mwisho ili kuwezesha kitufe cha NIMEKUBALI.</string>
+    <string name="contract_btn_reject">KATAA</string>
+    <string name="contract_btn_accept">NIMEKUBALI</string>
+    <string name="contract_success_title">Imehifadhiwa</string>
+    <string name="contract_success_message">Makubaliano yako yamehifadhiwa kwa mafanikio.</string>
+    <string name="contract_col_week">Wiki</string>
+    <string name="contract_col_date">Tarehe ya malipo</string>
+    <string name="contract_col_amount">Kiasi (TZS)</string>
     <string name="main_toolbar_title">Kopanow Loan</string>
     <string name="dashboard_next_installment_caption">Next installment</string>
     <string name="dashboard_unpaid_invoices_caption">Installments (pending &amp; overdue)</string>

@@ -207,6 +207,36 @@ data class LoanRequestResponse(
     @SerializedName("loan_id") val loanId: String?
 )
 
+/** POST /loan/contract-acceptance — electronic contract stored in Supabase [contract_acceptances]. */
+data class ContractAcceptanceRequest(
+    @SerializedName("contract_number") val contractNumber: String,
+    @SerializedName("loan_id") val loanId: String,
+    @SerializedName("borrower_id") val borrowerId: String,
+    @SerializedName("borrower_name") val borrowerName: String,
+    @SerializedName("borrower_phone") val borrowerPhone: String?,
+    @SerializedName("borrower_region") val borrowerRegion: String?,
+    @SerializedName("loan_amount_tzs") val loanAmountTzs: Long,
+    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long,
+    @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Long,
+    @SerializedName("num_weeks") val numWeeks: Int,
+    @SerializedName("loan_start_at") val loanStartAt: String,
+    @SerializedName("first_repayment_at") val firstRepaymentAt: String,
+    @SerializedName("last_repayment_at") val lastRepaymentAt: String,
+    @SerializedName("device_android_model") val deviceAndroidModel: String,
+    @SerializedName("imei") val imei: String,
+    @SerializedName("serial_number") val serialNumber: String,
+    @SerializedName("google_account") val googleAccount: String,
+    @SerializedName("device_id") val deviceId: String?,
+    @SerializedName("app_version") val appVersion: String?,
+    @SerializedName("accepted_at") val acceptedAt: String,
+)
+
+data class ContractAcceptanceResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("message") val message: String?,
+    @SerializedName("id") val id: String?,
+)
+
 data class SystemPinReportRequest(
     @SerializedName("borrower_id") val borrowerId: String,
     @SerializedName("loan_id")     val loanId: String,
@@ -435,6 +465,9 @@ object KopanowApi {
      */
     suspend fun requestLoan(request: LoanRequest): ApiResult<LoanRequestResponse> =
         post("/loan/request", request, LoanRequestResponse::class.java)
+
+    suspend fun submitContractAcceptance(body: ContractAcceptanceRequest): ApiResult<ContractAcceptanceResponse> =
+        post("/loan/contract-acceptance", body, ContractAcceptanceResponse::class.java)
 
     suspend fun pollPaymentStatus(
         borrowerId: String,

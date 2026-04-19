@@ -72,6 +72,12 @@
             android:exported="false"
             android:label="Loan Registration" />
 
+        <activity
+            android:name=".contract.ContractActivity"
+            android:exported="false"
+            android:label="@string/contract_screen_title"
+            android:theme="@style/Theme.Kopanow.Contract" />
+
         <!-- singleInstance ensures it cannot be minimized or pushed back -->
         <activity
             android:name=".LockScreenActivity"

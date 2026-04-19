@@ -4,6 +4,19 @@
         Kopanow — MaterialComponents light theme, Inter via Google Fonts (downloadable),
         Poppins available as @font/poppins_regular for one-off use.
     -->
+    <!-- Loan contract — teal / dark surfaces (Material Components; M3 color tokens) -->
+    <style name="Theme.Kopanow.Contract" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/contract_teal</item>
+        <item name="colorOnPrimary">@color/kopanow_white</item>
+        <item name="colorSecondary">@color/contract_dark</item>
+        <item name="colorOnSecondary">@color/kopanow_white</item>
+        <item name="android:colorBackground">@color/contract_light_teal</item>
+        <item name="colorSurface">@color/kopanow_white</item>
+        <item name="android:statusBarColor">@color/contract_dark</item>
+        <item name="android:navigationBarColor">@color/kopanow_white</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
+
     <style name="Theme.MyApplication" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/kopanow_navy</item>
         <item name="colorPrimaryVariant">@color/kopanow_navy_dark</item>

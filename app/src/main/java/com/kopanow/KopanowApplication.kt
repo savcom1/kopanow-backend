@@ -2,10 +2,12 @@ package com.kopanow
 
 import android.app.Application
 import android.util.Log
+import dagger.hilt.android.HiltAndroidApp
 
 /**
  * KopanowApplication — Global application state and initialisation.
  */
+@HiltAndroidApp
 class KopanowApplication : Application() {
 
     companion object {

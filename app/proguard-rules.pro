@@ -19,3 +19,10 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Hilt
+-dontwarn com.google.errorprone.annotations.**
+-keep class dagger.hilt.** { *; }
+-keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+-keep,allowobfuscation @interface dagger.hilt.android.lifecycle.HiltViewModel
+-keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }

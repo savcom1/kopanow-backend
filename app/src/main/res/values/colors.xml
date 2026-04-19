@@ -17,6 +17,12 @@
     <color name="kopanow_warning">#F5A623</color>
     <color name="kopanow_success">#00A651</color>
 
+    <!-- Contract screen (Material3 accent) -->
+    <color name="contract_teal">#0CC9A0</color>
+    <color name="contract_dark">#1A3A3A</color>
+    <color name="contract_light_teal">#E6FBF6</color>
+    <color name="contract_orange">#FF8A00</color>
+
     <!-- Status pills -->
     <color name="badge_paid_bg">#E6F9F2</color>
     <color name="badge_paid_text">#007A4D</color>
