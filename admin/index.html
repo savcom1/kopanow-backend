@@ -43,6 +43,10 @@
         Payments
         <span class="badge badge-red" id="badge-payments">0</span>
       </button>
+      <button class="nav-item" data-view="lipa-transactions">
+        <svg viewBox="0 0 24 24"><path d="M18 17H6v-2h12v2zm0-12H6v2h12V5zm0-2H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 10H6v2h12v-2z"/></svg>
+        Lipa / Till
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -182,6 +186,29 @@
       </div>
     </section>
 
+    <!-- ══════════ VIEW: LIPA / TILL TRANSACTIONS ══════════ -->
+    <section class="view" id="view-lipa-transactions">
+      <div class="filter-row" style="flex-wrap:wrap;gap:10px;align-items:center">
+        <button class="chip active" data-lipa-claim="all">All</button>
+        <button class="chip" data-lipa-claim="unclaimed">Unclaimed</button>
+        <button class="chip" data-lipa-claim="claimed">Claimed</button>
+        <input type="search" class="search-box" id="lipa-search" placeholder="Search ref, phone, name, till…" title="Filters this list only" style="max-width:280px;margin-left:auto" />
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Occurred</th><th>M-Pesa ref</th><th>Amount</th>
+              <th>Payer phone</th><th>Payer / till</th><th>Channel</th>
+              <th>Applied to</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="lipa-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="lipa-pagination"></div>
+    </section>
+
   </main>
 
   <!-- ══════════════════ DEVICE DETAIL MODAL ══════════════════ -->
@@ -221,6 +248,25 @@
 
         <div class="cmd-result" id="cmd-result"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ CONFIRM LIPA (manual apply) ══════════════════ -->
+  <div class="modal-overlay" id="lipa-confirm-overlay" style="display:none">
+    <div class="modal" style="max-width:440px">
+      <button class="modal-close" id="lipa-confirm-close" type="button">✕</button>
+      <h2 class="modal-title">Confirm transaction</h2>
+      <div class="modal-body" id="lipa-confirm-summary"></div>
+      <p class="modal-hint">Apply this M-Pesa amount to the borrower’s loan (same as verifying a payment).</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        <input type="text" class="lock-reason-input" id="lipa-confirm-borrower" placeholder="borrower_id" autocomplete="off" />
+        <input type="text" class="lock-reason-input" id="lipa-confirm-loan" placeholder="loan_id" autocomplete="off" />
+      </div>
+      <div class="command-row" style="margin-top:16px">
+        <button class="btn btn-green" id="lipa-confirm-submit" type="button">Apply &amp; link</button>
+        <button class="btn btn-ghost" id="lipa-confirm-cancel" type="button">Cancel</button>
+      </div>
+      <div class="cmd-result" id="lipa-confirm-result"></div>
     </div>
   </div>
 

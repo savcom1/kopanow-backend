@@ -176,5 +176,69 @@ router.post('/request', async (req, res) => {
   }
 });
 
+// POST /api/loan/contract-acceptance
+// Persists electronic contract acceptance from KopaNow ContractActivity.
+router.post('/contract-acceptance', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const required = [
+      'contract_number', 'loan_id', 'borrower_id', 'borrower_name',
+      'loan_amount_tzs', 'total_repayment_tzs', 'weekly_installment_tzs', 'num_weeks',
+      'loan_start_at', 'first_repayment_at', 'last_repayment_at',
+    ];
+    for (const k of required) {
+      if (b[k] == null || b[k] === '') {
+        return res.status(400).json({ success: false, message: `Missing: ${k}` });
+      }
+    }
+
+    const row = {
+      contract_number: String(b.contract_number).trim(),
+      loan_id: String(b.loan_id).trim(),
+      borrower_id: String(b.borrower_id).trim(),
+      borrower_name: String(b.borrower_name).trim(),
+      borrower_phone: b.borrower_phone != null ? String(b.borrower_phone).trim() : null,
+      borrower_region: b.borrower_region != null ? String(b.borrower_region).trim() : null,
+      loan_amount_tzs: Number(b.loan_amount_tzs),
+      total_repayment_tzs: Number(b.total_repayment_tzs),
+      weekly_installment_tzs: Number(b.weekly_installment_tzs),
+      num_weeks: parseInt(b.num_weeks, 10),
+      loan_start_at: new Date(b.loan_start_at).toISOString(),
+      first_repayment_at: new Date(b.first_repayment_at).toISOString(),
+      last_repayment_at: new Date(b.last_repayment_at).toISOString(),
+      device_android_model: b.device_android_model != null ? String(b.device_android_model).trim() : null,
+      imei: b.imei != null ? String(b.imei).trim() : null,
+      serial_number: b.serial_number != null ? String(b.serial_number).trim() : null,
+      google_account: b.google_account != null ? String(b.google_account).trim() : null,
+      device_id: b.device_id != null ? String(b.device_id).trim() : null,
+      app_version: b.app_version != null ? String(b.app_version).trim() : null,
+      accepted_at: b.accepted_at ? new Date(b.accepted_at).toISOString() : new Date().toISOString(),
+    };
+
+    if (!Number.isFinite(row.loan_amount_tzs) || row.num_weeks < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid amounts or num_weeks' });
+    }
+
+    const { data, error } = await supabase
+      .from('contract_acceptances')
+      .insert(row)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ success: false, message: 'Contract number already recorded' });
+      }
+      throw error;
+    }
+
+    return res.json({ success: true, id: data?.id, message: 'Contract acceptance saved' });
+  } catch (err) {
+    const msg = err?.message || 'Internal server error';
+    console.error('[loan:contract-acceptance]', msg);
+    return res.status(500).json({ success: false, message: msg });
+  }
+});
+
 module.exports = router;
 

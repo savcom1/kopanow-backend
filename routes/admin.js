@@ -4,6 +4,11 @@ const router   = express.Router();
 const supabase = require('../helpers/supabase');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand, sendHeartbeatRequest } = require('../helpers/fcm');
+const {
+  applyVerifiedMpesaAmount,
+  validateTxAmountForLoan,
+  attemptAutoMatchIncomingLipa,
+} = require('../helpers/lipaPayment');
 
 // ── Helper: compute days overdue ─────────────────────────────────────────────
 function daysOverdue(nextDueDate) {
@@ -32,35 +37,6 @@ function summarizeInvoiceRows(rows) {
     total: rows.length,
     next_due_date: nextUnpaid?.due_date || null,
   };
-}
-
-const LOAN_DEVICE_STATUSES = new Set([
-  'unregistered', 'registered', 'active', 'locked', 'admin_removed', 'suspended',
-]);
-const INVOICE_STATUSES = new Set(['pending', 'paid', 'overdue']);
-
-/** Sum amount_due for invoices on this loan that are not paid (matches app “remaining balance” logic). */
-async function sumUnpaidInvoiceAmounts(loanId) {
-  const { data: rows, error } = await supabase
-    .from('loan_invoices')
-    .select('amount_due, status')
-    .eq('loan_id', loanId);
-  if (error) throw error;
-  return (rows || [])
-    .filter((r) => String(r.status || '').toLowerCase().trim() !== 'paid')
-    .reduce((s, r) => s + Number(r.amount_due || 0), 0);
-}
-
-/** Set loans.outstanding_amount = sum of unpaid invoice amounts (accounting alignment). */
-async function reconcileOutstandingFromInvoices(loanId) {
-  const sum = await sumUnpaidInvoiceAmounts(loanId);
-  const rounded = Math.max(0, Math.round(sum * 100) / 100);
-  const { error } = await supabase
-    .from('loans')
-    .update({ outstanding_amount: rounded, updated_at: new Date().toISOString() })
-    .eq('loan_id', loanId);
-  if (error) throw error;
-  return rounded;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,253 +451,6 @@ router.post('/tamper-logs/:id/review', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/admin/accounting/registration/:borrowerId
-// Updates registrations row (customer profile). Columns match Supabase schema.
-// ─────────────────────────────────────────────────────────────────────────────
-router.patch('/accounting/registration/:borrowerId', async (req, res) => {
-  try {
-    const borrowerId = String(req.params.borrowerId || '').trim();
-    if (!borrowerId) return res.status(400).json({ success: false, error: 'borrower_id required' });
-
-    const b = req.body || {};
-    const payload = {};
-    if (b.full_name != null) payload.full_name = String(b.full_name).trim();
-    if (b.phone != null) payload.phone = String(b.phone).trim();
-    if (b.national_id != null) payload.national_id = String(b.national_id).trim();
-    if (b.region != null) payload.region = String(b.region).trim();
-    if (b.address != null) payload.address = String(b.address).trim();
-
-    if (Object.keys(payload).length === 0) {
-      return res.status(400).json({ success: false, error: 'No updatable fields' });
-    }
-
-    for (const k of Object.keys(payload)) {
-      if (payload[k] === '') {
-        return res.status(400).json({ success: false, error: `${k} cannot be empty` });
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('registrations')
-      .update(payload)
-      .eq('borrower_id', borrowerId)
-      .select('borrower_id, full_name, phone, national_id, region, address, updated_at')
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ success: false, error: 'Registration not found' });
-
-    return res.json({ success: true, registration: data });
-  } catch (err) {
-    console.error('[admin:accounting:registration]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/admin/accounting/loan/:loanId
-// Updates loans row. Optional reconcile_outstanding_from_invoices: true syncs outstanding_amount
-// to sum(unpaid invoice amount_due).
-// ─────────────────────────────────────────────────────────────────────────────
-router.patch('/accounting/loan/:loanId', async (req, res) => {
-  try {
-    const loanId = String(req.params.loanId || '').trim();
-    if (!loanId) return res.status(400).json({ success: false, error: 'loan_id required' });
-
-    const b = req.body || {};
-    const payload = {};
-
-    const num = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
-
-    if (b.principal_amount != null) {
-      const n = num(b.principal_amount);
-      if (n == null) return res.status(400).json({ success: false, error: 'principal_amount invalid' });
-      payload.principal_amount = n;
-    }
-    if (b.outstanding_amount != null) {
-      const n = num(b.outstanding_amount);
-      if (n == null) return res.status(400).json({ success: false, error: 'outstanding_amount invalid' });
-      payload.outstanding_amount = Math.max(0, n);
-    }
-    if (b.interest_amount != null) {
-      const n = num(b.interest_amount);
-      if (n == null) return res.status(400).json({ success: false, error: 'interest_amount invalid' });
-      payload.interest_amount = Math.max(0, n);
-    }
-    if (b.installment_weeks != null) {
-      const w = parseInt(b.installment_weeks, 10);
-      if (!Number.isFinite(w) || w < 1) {
-        return res.status(400).json({ success: false, error: 'installment_weeks must be a positive integer' });
-      }
-      payload.installment_weeks = w;
-    }
-    if (b.total_repayment_amount != null) {
-      const n = num(b.total_repayment_amount);
-      if (n == null) return res.status(400).json({ success: false, error: 'total_repayment_amount invalid' });
-      payload.total_repayment_amount = Math.max(0, n);
-    }
-    if (b.weekly_installment_amount != null) {
-      const n = num(b.weekly_installment_amount);
-      if (n == null) return res.status(400).json({ success: false, error: 'weekly_installment_amount invalid' });
-      payload.weekly_installment_amount = Math.max(0, n);
-    }
-    if (b.loan_schedule_start != null) {
-      const t = String(b.loan_schedule_start).trim();
-      payload.loan_schedule_start = t ? new Date(t).toISOString() : null;
-    }
-    if (b.next_due_date != null) {
-      const t = String(b.next_due_date).trim();
-      payload.next_due_date = t ? new Date(t).toISOString() : null;
-    }
-    if (b.disbursed_at != null) {
-      const t = String(b.disbursed_at).trim();
-      payload.disbursed_at = t ? new Date(t).toISOString() : null;
-    }
-    if (b.device_status != null) {
-      const ds = String(b.device_status).trim();
-      if (!LOAN_DEVICE_STATUSES.has(ds)) {
-        return res.status(400).json({ success: false, error: `device_status must be one of: ${[...LOAN_DEVICE_STATUSES].join(', ')}` });
-      }
-      payload.device_status = ds;
-    }
-
-    const doReconcile = b.reconcile_outstanding_from_invoices === true;
-
-    if (!doReconcile && Object.keys(payload).length === 0) {
-      return res.status(400).json({ success: false, error: 'No updatable fields' });
-    }
-
-    if (Object.keys(payload).length > 0) {
-      payload.updated_at = new Date().toISOString();
-      const { error } = await supabase.from('loans').update(payload).eq('loan_id', loanId);
-      if (error) throw error;
-    }
-
-    if (doReconcile) {
-      await reconcileOutstandingFromInvoices(loanId);
-    }
-
-    const { data: loan, error: fetchErr } = await supabase.from('loans').select('*').eq('loan_id', loanId).maybeSingle();
-    if (fetchErr) throw fetchErr;
-
-    return res.json({ success: true, loan, reconciled_outstanding: doReconcile });
-  } catch (err) {
-    console.error('[admin:accounting:loan]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/admin/accounting/loan/:loanId/reconcile-outstanding
-// Sets loans.outstanding_amount = sum of unpaid loan_invoices.amount_due
-// ─────────────────────────────────────────────────────────────────────────────
-router.post('/accounting/loan/:loanId/reconcile-outstanding', async (req, res) => {
-  try {
-    const loanId = String(req.params.loanId || '').trim();
-    if (!loanId) return res.status(400).json({ success: false, error: 'loan_id required' });
-
-    const rounded = await reconcileOutstandingFromInvoices(loanId);
-    const { data: loan, error } = await supabase.from('loans').select('*').eq('loan_id', loanId).maybeSingle();
-    if (error) throw error;
-
-    return res.json({ success: true, loan, outstanding_amount: rounded });
-  } catch (err) {
-    console.error('[admin:accounting:reconcile]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/admin/accounting/invoice/:invoiceId  (invoiceId = UUID)
-// Updates loan_invoices row. After update, optional reconcile_loan_outstanding syncs loans row.
-// ─────────────────────────────────────────────────────────────────────────────
-router.patch('/accounting/invoice/:invoiceId', async (req, res) => {
-  try {
-    const invoiceId = String(req.params.invoiceId || '').trim();
-    if (!invoiceId) return res.status(400).json({ success: false, error: 'invoice id required' });
-
-    const b = req.body || {};
-    const payload = {};
-
-    if (b.invoice_number != null) payload.invoice_number = String(b.invoice_number).trim();
-    if (b.installment_index != null) {
-      const ix = parseInt(b.installment_index, 10);
-      if (!Number.isFinite(ix) || ix < 0) {
-        return res.status(400).json({ success: false, error: 'installment_index invalid' });
-      }
-      payload.installment_index = ix;
-    }
-    if (b.borrower_name != null) payload.borrower_name = String(b.borrower_name).trim() || null;
-    if (b.amount_due != null) {
-      const n = Number(b.amount_due);
-      if (!Number.isFinite(n) || n < 0) {
-        return res.status(400).json({ success: false, error: 'amount_due invalid' });
-      }
-      payload.amount_due = n;
-    }
-    if (b.due_date != null) {
-      const t = String(b.due_date).trim();
-      payload.due_date = t ? new Date(t).toISOString() : null;
-    }
-    if (b.status != null) {
-      const st = String(b.status).trim().toLowerCase();
-      if (!INVOICE_STATUSES.has(st)) {
-        return res.status(400).json({ success: false, error: `status must be one of: ${[...INVOICE_STATUSES].join(', ')}` });
-      }
-      payload.status = st;
-      if (st === 'paid') {
-        const t = b.paid_at != null && String(b.paid_at).trim();
-        payload.paid_at = t ? new Date(t).toISOString() : new Date().toISOString();
-      } else {
-        payload.paid_at = null;
-      }
-    } else if (b.paid_at !== undefined) {
-      const t = String(b.paid_at || '').trim();
-      payload.paid_at = t ? new Date(t).toISOString() : null;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      return res.status(400).json({ success: false, error: 'No updatable fields' });
-    }
-
-    payload.updated_at = new Date().toISOString();
-
-    const { data: before, error: e0 } = await supabase
-      .from('loan_invoices')
-      .select('loan_id')
-      .eq('id', invoiceId)
-      .maybeSingle();
-    if (e0) throw e0;
-    if (!before) return res.status(404).json({ success: false, error: 'Invoice not found' });
-
-    const { data: row, error } = await supabase
-      .from('loan_invoices')
-      .update(payload)
-      .eq('id', invoiceId)
-      .select('*')
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!row) return res.status(404).json({ success: false, error: 'Invoice update failed' });
-
-    let loan = null;
-    if (b.reconcile_loan_outstanding !== false) {
-      await reconcileOutstandingFromInvoices(row.loan_id);
-      const { data: l } = await supabase.from('loans').select('*').eq('loan_id', row.loan_id).maybeSingle();
-      loan = l;
-    }
-
-    return res.json({ success: true, invoice: row, loan });
-  } catch (err) {
-    console.error('[admin:accounting:invoice]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/seed  (DEV ONLY)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/seed', async (req, res) => {
@@ -787,6 +516,132 @@ router.delete('/seed', async (req, res) => {
   await supabase.from('devices').delete().in('loan_id', ids);
   await supabase.from('loans').delete().in('loan_id', ids);
   return res.json({ success: true, message: 'Seed data cleared' });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/lipa-transactions  — list + search (SMS / till ingest)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/lipa-transactions', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const claim = String(req.query.claim || 'all').toLowerCase();
+    const qRaw = req.query.search != null ? String(req.query.search).trim() : '';
+    const q = qRaw.replace(/,/g, '').replace(/%/g, '').replace(/_/g, '').slice(0, 120);
+
+    let query = supabase.from('lipa_transactions').select('*', { count: 'exact' });
+
+    if (claim === 'unclaimed') query = query.is('claimed_borrower_id', null);
+    else if (claim === 'claimed') query = query.not('claimed_borrower_id', 'is', null);
+
+    if (q) {
+      const pat = `%${q}%`;
+      query = query.or(
+        [
+          `transaction_ref.ilike.${pat}`,
+          `payer_phone.ilike.${pat}`,
+          `till_contract_name.ilike.${pat}`,
+          `payer_display_name.ilike.${pat}`,
+          `lipa_channel.ilike.${pat}`,
+        ].join(',')
+      );
+    }
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    const { data: rows, error, count } = await query
+      .order('transaction_occurred_at', { ascending: false, nullsFirst: false })
+      .order('ingested_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      transactions: rows || [],
+      total: count || 0,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error('[admin:lipa-transactions]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/lipa-transactions/:id/retry-match  — phone auto-match (SMS flow)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/lipa-transactions/:id/retry-match', async (req, res) => {
+  try {
+    const { data: tx, error } = await supabase
+      .from('lipa_transactions')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!tx) return res.status(404).json({ success: false, error: 'Transaction not found' });
+    if (tx.claimed_borrower_id) {
+      return res.status(409).json({ success: false, error: 'Already claimed / applied' });
+    }
+
+    const result = await attemptAutoMatchIncomingLipa(tx);
+    return res.json({ success: true, match: result });
+  } catch (err) {
+    console.error('[admin:lipa-retry-match]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/lipa-transactions/:id/confirm  — manual apply to borrower + loan
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/lipa-transactions/:id/confirm', async (req, res) => {
+  try {
+    const borrower_id = req.body?.borrower_id != null ? String(req.body.borrower_id).trim() : '';
+    const loan_id = req.body?.loan_id != null ? String(req.body.loan_id).trim() : '';
+    if (!borrower_id || !loan_id) {
+      return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
+    }
+
+    const { data: tx, error } = await supabase
+      .from('lipa_transactions')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!tx) return res.status(404).json({ success: false, error: 'Transaction not found' });
+    if (tx.claimed_borrower_id) {
+      return res.status(409).json({ success: false, error: 'This Lipa row is already linked to a loan' });
+    }
+
+    const ref = tx.transaction_ref.toString().trim().toUpperCase();
+    const { ok, reason } = await validateTxAmountForLoan(loan_id, tx.amount);
+    if (!ok) return res.status(400).json({ success: false, error: reason || 'Amount validation failed' });
+
+    const result = await applyVerifiedMpesaAmount({
+      borrower_id,
+      loan_id,
+      mpesa_ref: ref,
+      amount: tx.amount,
+      verified_by: 'admin_lipa_confirm',
+      reviewer_note: 'Confirmed from admin Lipa transactions view',
+      payment_reference_id: null,
+      raw_callback: { source: 'admin_lipa_confirm', lipa_id: tx.id },
+    });
+
+    await supabase.from('lipa_transactions').update({
+      claimed_borrower_id: borrower_id,
+      claimed_loan_id: loan_id,
+      claimed_at: new Date().toISOString(),
+      payment_reference_id: null,
+    }).eq('id', tx.id);
+
+    return res.json({ success: true, result });
+  } catch (err) {
+    console.error('[admin:lipa-confirm]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
 });
 
 module.exports = router;

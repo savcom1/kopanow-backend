@@ -160,7 +160,7 @@ async function startServer() {
     console.log(`[server] Payment API: /api/payment/{submit,status,retry-resolve,verify/:id,reject/:id,pending}`);
     console.log(`[server] Lipa SMS API: POST /api/lipa/transactions (X-Lipa-Ingest-Secret)`);
     console.log(`[server] AzamPay API:   POST /api/mpesa/stk-push`);
-    console.log(`[server] Admin API:   /api/admin/{devices,…,accounting/*}`);
+    console.log(`[server] Admin API:   /api/admin/{devices,devices/:id,loans,loans/:loanId/invoices,tamper-logs,command}`);
     console.log(`[server] PIN API:     /api/pin/{set,clear,verify}`);
     startPaymentScheduler();
   });

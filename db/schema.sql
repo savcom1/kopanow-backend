@@ -233,13 +233,28 @@ CREATE TABLE IF NOT EXISTS lipa_transactions (
   claimed_borrower_id    TEXT,
   claimed_loan_id        TEXT,
   claimed_at             TIMESTAMPTZ,
-  payment_reference_id   UUID
+  payment_reference_id   UUID,
+  lipa_channel           TEXT,
+  transaction_occurred_at TIMESTAMPTZ,
+  payer_display_name     TEXT,
+  till_contract_name     TEXT,
+  transaction_id_alt     TEXT,
+  field_details_text     TEXT,
+  sms_concatenated_body  TEXT,
+  new_balance_after_tzs  NUMERIC(14,2),
+  provider_tail            TEXT,
+  parsed_payload         JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_lipa_transactions_ref
   ON lipa_transactions (transaction_ref);
 CREATE INDEX IF NOT EXISTS idx_lipa_transactions_payer
   ON lipa_transactions (payer_phone);
+CREATE INDEX IF NOT EXISTS idx_lipa_transactions_occurred_at
+  ON lipa_transactions (transaction_occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lipa_transactions_till_contract_name
+  ON lipa_transactions (till_contract_name)
+  WHERE till_contract_name IS NOT NULL;
 
 
 -- ── Tamper logs ─────────────────────────────────────────────
