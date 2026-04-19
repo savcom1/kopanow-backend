@@ -75,6 +75,15 @@ function fmtDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-TZ', { day:'numeric', month:'short', year:'numeric' });
 }
 
+/** For `<input type="datetime-local">` values from ISO timestamps */
+function isoToDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function esc(s) {
   if (s == null || s === '') return '';
   return String(s)
@@ -392,6 +401,117 @@ async function loadLoans() {
   }).join('');
 }
 
+async function saveAccRegistration() {
+  const ctx = window.__accContext;
+  if (!ctx?.borrowerId) return;
+  const body = {
+    full_name: $('#acc-reg-full_name')?.value?.trim(),
+    phone: $('#acc-reg-phone')?.value?.trim(),
+    national_id: $('#acc-reg-national_id')?.value?.trim(),
+    region: $('#acc-reg-region')?.value?.trim(),
+    address: $('#acc-reg-address')?.value?.trim(),
+  };
+  const result = await apiFetch(`${API}/accounting/registration/${encodeURIComponent(ctx.borrowerId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (result.success) {
+    toast('Customer saved (registrations)', 'success');
+    openModal(ctx.deviceRowId);
+  }
+}
+
+async function saveAccLoan() {
+  const ctx = window.__accContext;
+  if (!ctx?.loanId) return;
+  const reconcile = $('#acc-loan-reconcile')?.checked;
+
+  const num = (sel) => {
+    const s = $(sel)?.value?.trim();
+    if (s === '' || s == null) return undefined;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const intOrUndef = (sel) => {
+    const s = $(sel)?.value?.trim();
+    if (s === '' || s == null) return undefined;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const dtIso = (sel) => {
+    const s = $(sel)?.value?.trim();
+    return s ? new Date(s).toISOString() : null;
+  };
+
+  const body = {
+    principal_amount: num('#acc-loan-principal'),
+    outstanding_amount: num('#acc-loan-outstanding'),
+    interest_amount: num('#acc-loan-interest'),
+    total_repayment_amount: num('#acc-loan-total-repay'),
+    weekly_installment_amount: num('#acc-loan-weekly'),
+    installment_weeks: intOrUndef('#acc-loan-weeks'),
+    device_status: $('#acc-loan-device-status')?.value,
+    loan_schedule_start: dtIso('#acc-loan-schedule-start'),
+    next_due_date: dtIso('#acc-loan-next-due'),
+    disbursed_at: dtIso('#acc-loan-disbursed'),
+    reconcile_outstanding_from_invoices: !!reconcile,
+  };
+
+  Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
+
+  const result = await apiFetch(`${API}/accounting/loan/${encodeURIComponent(ctx.loanId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (result.success) {
+    toast(reconcile ? 'Loan saved; outstanding reconciled from invoices' : 'Loan saved', 'success');
+    openModal(ctx.deviceRowId);
+  }
+}
+
+async function reconcileAccLoanOnly() {
+  const ctx = window.__accContext;
+  if (!ctx?.loanId) return;
+  const result = await apiFetch(`${API}/accounting/loan/${encodeURIComponent(ctx.loanId)}/reconcile-outstanding`, {
+    method: 'POST',
+    body: '{}',
+  });
+  if (result.success) {
+    toast(`Outstanding set to TZS ${Number(result.outstanding_amount || 0).toLocaleString()}`, 'success');
+    openModal(ctx.deviceRowId);
+  }
+}
+
+async function saveAccInvoiceRow(btn) {
+  const tr = btn?.closest?.('tr');
+  const invoiceId = tr?.dataset?.invoiceId;
+  if (!invoiceId) return;
+
+  const status = tr.querySelector('.acc-inv-status')?.value;
+  const dueEl = tr.querySelector('.acc-inv-due');
+  const paidEl = tr.querySelector('.acc-inv-paid');
+  const body = {
+    installment_index: parseInt(tr.querySelector('.acc-inv-idx')?.value, 10),
+    invoice_number: tr.querySelector('.acc-inv-num')?.value?.trim(),
+    amount_due: Number(tr.querySelector('.acc-inv-amt')?.value),
+    due_date: dueEl?.value ? new Date(dueEl.value).toISOString() : null,
+    status,
+    reconcile_loan_outstanding: true,
+  };
+  if (status === 'paid') {
+    body.paid_at = paidEl?.value ? new Date(paidEl.value).toISOString() : new Date().toISOString();
+  }
+
+  const result = await apiFetch(`${API}/accounting/invoice/${encodeURIComponent(invoiceId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (result.success) {
+    toast('Invoice saved; loan outstanding reconciled', 'success');
+    openModal(window.__accContext.deviceRowId);
+  }
+}
+
 async function openModal(mongoId) {
   selectedDeviceId = mongoId;
   $('#modal-overlay').classList.add('open');
@@ -414,66 +534,88 @@ async function openModal(mongoId) {
     ? `${esc(reg.full_name)} · ${esc(d.loan_id)}`
     : `${esc(d.borrower_id)} — ${esc(d.loan_id)}`;
 
+  window.__accContext = { borrowerId: d.borrower_id, loanId: d.loan_id, deviceRowId: mongoId };
+
   let html = '';
 
   if (reg) {
-    html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Customer (registration)</div>`;
-    html += [
-      ['Full name', esc(reg.full_name)],
-      ['Phone', esc(reg.phone)],
-      ['National ID', esc(reg.national_id)],
-      ['Region', esc(reg.region)],
-      ['Address', esc(reg.address)],
-    ].map(([a, b]) => `
-      <div class="detail-row">
-        <span class="detail-label">${a}</span>
-        <span class="detail-value">${b || '—'}</span>
-      </div>`).join('');
-    html += '<div style="height:14px"></div>';
+    html += `
+    <div class="acc-section">
+      <h3>Customer (registrations table)</h3>
+      <div class="acc-grid">
+        <label>Full name<input id="acc-reg-full_name" type="text" value="${esc(reg.full_name)}" autocomplete="off"/></label>
+        <label>Phone<input id="acc-reg-phone" type="text" value="${esc(reg.phone)}" autocomplete="off"/></label>
+        <label>National ID<input id="acc-reg-national_id" type="text" value="${esc(reg.national_id)}" autocomplete="off"/></label>
+        <label>Region<input id="acc-reg-region" type="text" value="${esc(reg.region)}" autocomplete="off"/></label>
+        <label style="grid-column:1/-1">Address<input id="acc-reg-address" type="text" value="${esc(reg.address)}" autocomplete="off"/></label>
+      </div>
+      <div class="acc-actions">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="saveAccRegistration()">Save customer</button>
+      </div>
+      <p class="acc-hint">Maps to Supabase <span class="mono">registrations</span> (borrower_id is fixed).</p>
+    </div>`;
   }
 
   if (l) {
-    html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Loan & repayment schedule</div>`;
-    const loanRows = [
-      ['Principal', `TZS ${Number(l.principal_amount || 0).toLocaleString()}`],
-      ['Interest (defined)', l.interest_amount != null ? `TZS ${Number(l.interest_amount).toLocaleString()} <span class="text-muted" style="font-size:11px">(total − principal; total = 120%/140%/160% of principal)</span>` : '—'],
-      ['Total repayment (fixed)', l.total_repayment_amount != null ? `TZS ${Number(l.total_repayment_amount).toLocaleString()}` : '—'],
-      ['Weekly installment', l.weekly_installment_amount != null ? `TZS ${Number(l.weekly_installment_amount).toLocaleString()}` : '—'],
-      ['Installment weeks', l.installment_weeks != null ? String(l.installment_weeks) : '—'],
-      ['Schedule rule', 'Total = principal × (120% / 140% / 160%) for 1–3 mo; weekly = total ÷ (4 × months)'],
-      ['Schedule start', l.loan_schedule_start ? fmtDate(l.loan_schedule_start) : '—'],
-      ['Outstanding', `<strong>TZS ${Number(l.outstanding_amount || 0).toLocaleString()}</strong>`],
-      ['Next due date', fmtDate(l.next_due_date)],
-      ['Calendar days overdue', l.next_due_date ? (daysOverdueClient(l.next_due_date) ? `<span style="color:var(--red)">${daysOverdueClient(l.next_due_date)} days</span>` : '<span style="color:var(--green)">0</span>') : '—'],
-    ];
-    if (invSum && invSum.total) {
-      loanRows.push(['Installment status', formatInvoiceSummaryHtml(invSum)]);
-    }
-    html += loanRows.map(([a, b]) => `
-      <div class="detail-row">
-        <span class="detail-label">${a}</span>
-        <span class="detail-value">${b}</span>
-      </div>`).join('');
-    html += '<div style="height:14px"></div>';
+    html += `
+    <div class="acc-section">
+      <h3>Loan &amp; amounts (loans table)</h3>
+      <div class="acc-grid">
+        <label>Principal (TZS)<input id="acc-loan-principal" type="number" step="0.01" value="${Number(l.principal_amount || 0)}"/></label>
+        <label>Outstanding (TZS)<input id="acc-loan-outstanding" type="number" step="0.01" value="${Number(l.outstanding_amount || 0)}"/></label>
+        <label>Interest (TZS)<input id="acc-loan-interest" type="number" step="0.01" value="${l.interest_amount != null ? Number(l.interest_amount) : ''}" placeholder="0"/></label>
+        <label>Total repayment (TZS)<input id="acc-loan-total-repay" type="number" step="0.01" value="${l.total_repayment_amount != null ? Number(l.total_repayment_amount) : ''}" placeholder="—"/></label>
+        <label>Weekly installment (TZS)<input id="acc-loan-weekly" type="number" step="0.01" value="${l.weekly_installment_amount != null ? Number(l.weekly_installment_amount) : ''}" placeholder="—"/></label>
+        <label>Installment weeks<input id="acc-loan-weeks" type="number" step="1" min="1" value="${l.installment_weeks != null ? Number(l.installment_weeks) : ''}" placeholder="—"/></label>
+        <label>Device status
+          <select id="acc-loan-device-status">
+            ${['unregistered', 'registered', 'active', 'locked', 'admin_removed', 'suspended'].map((s) =>
+              `<option value="${s}" ${l.device_status === s ? 'selected' : ''}>${s}</option>`
+            ).join('')}
+          </select>
+        </label>
+        <label>Schedule start<input id="acc-loan-schedule-start" type="datetime-local" value="${isoToDatetimeLocal(l.loan_schedule_start)}"/></label>
+        <label>Next due<input id="acc-loan-next-due" type="datetime-local" value="${isoToDatetimeLocal(l.next_due_date)}"/></label>
+        <label>Disbursed at<input id="acc-loan-disbursed" type="datetime-local" value="${isoToDatetimeLocal(l.disbursed_at)}"/></label>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0;cursor:pointer">
+        <input type="checkbox" id="acc-loan-reconcile"/> On save, set outstanding = sum of <strong>unpaid</strong> invoice amounts (recommended)
+      </label>
+      <div class="acc-actions">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="saveAccLoan()">Save loan</button>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="reconcileAccLoanOnly()">Sync outstanding from invoices only</button>
+      </div>
+      <p class="acc-hint">Rule: total repayment = principal × (120% / 140% / 160%) for 1–3 months; weekly = total ÷ (4 × months). Overdue days: ${l.next_due_date ? daysOverdueClient(l.next_due_date) : '—'} · Invoices: ${invSum && invSum.total ? formatInvoiceSummaryHtml(invSum) : '—'}</p>
+    </div>`;
   }
 
   if (invoices.length) {
-    html += `<div style="margin:0 0 8px;font-weight:600;font-size:13px;color:var(--text-secondary)">Invoices (${invoices.length})</div>`;
-    html += `<div style="overflow:auto;max-height:260px;border:1px solid var(--border);border-radius:8px;margin-bottom:14px">
+    html += `<div class="acc-section">
+      <h3>Installment invoices (loan_invoices)</h3>
+      <div style="overflow:auto;max-height:280px;border:1px solid var(--border);border-radius:8px">
       <table class="data-table" style="font-size:12px;margin:0;width:100%">
         <thead><tr>
-          <th>#</th><th>Invoice #</th><th>Amount</th><th>Due</th><th>Status</th><th>Paid at</th>
+          <th>#</th><th>Invoice #</th><th>Amount (TZS)</th><th>Due</th><th>Status</th><th>Paid at</th><th></th>
         </tr></thead><tbody>`;
     html += invoices.map((row) => `
-        <tr>
-          <td>${row.installment_index}</td>
-          <td class="mono">${esc(row.invoice_number)}</td>
-          <td>TZS ${Number(row.amount_due).toLocaleString()}</td>
-          <td>${fmtDate(row.due_date)}</td>
-          <td>${invoiceStatusBadge(row.status)}</td>
-          <td class="text-muted">${row.paid_at ? fmtDate(row.paid_at) : '—'}</td>
+        <tr data-invoice-id="${row.id}">
+          <td><input type="number" class="acc-inv-idx" style="width:52px" value="${row.installment_index}" min="0" step="1"/></td>
+          <td><input type="text" class="acc-inv-num mono" style="min-width:120px;width:100%" value="${esc(row.invoice_number)}"/></td>
+          <td><input type="number" class="acc-inv-amt" style="width:100px" value="${Number(row.amount_due)}" min="0" step="0.01"/></td>
+          <td><input type="datetime-local" class="acc-inv-due" value="${isoToDatetimeLocal(row.due_date)}"/></td>
+          <td>
+            <select class="acc-inv-status" style="font-size:12px;padding:4px">
+              <option value="pending" ${row.status === 'pending' ? 'selected' : ''}>pending</option>
+              <option value="overdue" ${row.status === 'overdue' ? 'selected' : ''}>overdue</option>
+              <option value="paid" ${row.status === 'paid' ? 'selected' : ''}>paid</option>
+            </select>
+          </td>
+          <td><input type="datetime-local" class="acc-inv-paid" value="${isoToDatetimeLocal(row.paid_at)}"/></td>
+          <td><button type="button" class="btn btn-xs btn-secondary" onclick="saveAccInvoiceRow(this)">Save</button></td>
         </tr>`).join('');
-    html += '</tbody></table></div>';
+    html += `</tbody></table></div>
+      <p class="acc-hint">Saving an invoice updates <span class="mono">loan_invoices</span> and reconciles <span class="mono">loans.outstanding_amount</span> to unpaid totals unless you uncheck (API: reconcile_loan_outstanding).</p>
+    </div>`;
   }
 
   html += `<div style="margin:0 0 10px;font-weight:600;font-size:13px;color:var(--text-secondary)">Device & lock state</div>`;
@@ -893,4 +1035,8 @@ window.setPinForDevice  = setPinForDevice;
 window.clearPinForDevice = clearPinForDevice;
 window.verifyPayment    = verifyPayment;
 window.rejectPayment    = rejectPayment;
+window.saveAccRegistration = saveAccRegistration;
+window.saveAccLoan      = saveAccLoan;
+window.reconcileAccLoanOnly = reconcileAccLoanOnly;
+window.saveAccInvoiceRow = saveAccInvoiceRow;
 

@@ -14,6 +14,84 @@ function daysOverdue(nextDueDate) {
   return Math.max(0, Math.floor((Date.now() - new Date(nextDueDate).getTime()) / 86400000));
 }
 
+/**
+ * True if an invoice row belongs to the loan identified by `baseLoanId`.
+ * Some DBs store the same key as `loans.loan_id`, others append `-1`, `_2`, etc.
+ */
+function invoiceLoanIdMatches(invoiceLoanId, baseLoanId) {
+  const lid = String(invoiceLoanId || '').trim();
+  const base = String(baseLoanId || '').trim();
+  if (!lid || !base) return false;
+  if (lid === base) return true;
+  if (lid.startsWith(`${base}-`) || lid.startsWith(`${base}_`)) return true;
+  return false;
+}
+
+/**
+ * Load invoices for a loan: exact loan_id first, then borrower_id with smart fallback.
+ * If invoice rows use a different loan_id string than `loans.loan_id`, we still resolve them
+ * (single-loan borrower → all rows; multi-loan → match any loans.loan_id for that borrower).
+ */
+async function fetchLoanInvoicesForLoanRow(canonicalLoanId, borrower_id) {
+  const sel = 'invoice_number, installment_index, borrower_name, borrower_id, amount_due, due_date, status, paid_at, loan_id';
+
+  const { data: exact, error: e1 } = await supabase
+    .from('loan_invoices')
+    .select(sel)
+    .eq('loan_id', canonicalLoanId)
+    .order('installment_index', { ascending: true });
+
+  if (e1) throw e1;
+  if (exact && exact.length > 0) return exact;
+
+  const { data: byBorrower, error: e2 } = await supabase
+    .from('loan_invoices')
+    .select(sel)
+    .eq('borrower_id', borrower_id)
+    .order('installment_index', { ascending: true });
+
+  if (e2) throw e2;
+  const list = byBorrower || [];
+  if (list.length === 0) return [];
+
+  const matched = list.filter((r) => invoiceLoanIdMatches(r.loan_id, canonicalLoanId));
+  if (matched.length > 0) return matched;
+
+  const { data: borrowerLoans, error: e3 } = await supabase
+    .from('loans')
+    .select('loan_id')
+    .eq('borrower_id', borrower_id);
+
+  if (e3) throw e3;
+  const loanIds = (borrowerLoans || []).map((l) => String(l.loan_id || '').trim()).filter(Boolean);
+
+  if (loanIds.length === 1) {
+    console.warn(
+      `[invoices] borrower ${borrower_id}: invoice loan_id values do not match loans.loan_id "${canonicalLoanId}" — ` +
+        `returning all ${list.length} invoice(s) (single loan for borrower)`
+    );
+    return list;
+  }
+
+  const byAnyLoan = list.filter((inv) => {
+    const il = String(inv.loan_id || '').trim();
+    return loanIds.some((lid) => il === lid || invoiceLoanIdMatches(il, lid));
+  });
+  if (byAnyLoan.length > 0) return byAnyLoan;
+
+  if (loanIds.length === 0) {
+    console.warn(
+      `[invoices] borrower ${borrower_id}: no loans row(s) for borrower — returning ${list.length} invoice(s)`
+    );
+    return list;
+  }
+
+  console.warn(
+    `[invoices] borrower ${borrower_id}: ${list.length} invoice(s) could not be matched to loan(s) [${loanIds.join(', ')}] (canonical "${canonicalLoanId}")`
+  );
+  return [];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/device/enrollment-check
 //
@@ -243,13 +321,19 @@ router.post('/heartbeat', async (req, res) => {
       await supabase.from('devices').update({ device_id }).eq('id', device.id);
     }
 
-    const { data: invoices } = await supabase
-      .from('loan_invoices')
-      .select(
-        'invoice_number, installment_index, borrower_name, amount_due, due_date, status, paid_at'
-      )
-      .eq('loan_id', loan_id)
-      .order('installment_index', { ascending: true });
+    const invRowsHb = await fetchLoanInvoicesForLoanRow(
+      String(loan_id || '').trim(),
+      String(borrower_id || '').trim()
+    );
+    const invoices = invRowsHb.map((r) => ({
+      invoice_number: r.invoice_number,
+      installment_index: r.installment_index,
+      borrower_name: r.borrower_name,
+      amount_due: r.amount_due,
+      due_date: r.due_date,
+      status: r.status,
+      paid_at: r.paid_at,
+    }));
 
     const { data: rowAfter } = await supabase
       .from('devices')
@@ -381,16 +465,17 @@ router.post('/fcm-token', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/details', async (req, res) => {
   try {
-    const { borrower_id, loan_id } = req.query;
-    if (!borrower_id || !loan_id) {
+    const borrower_id = String(req.query.borrower_id || '').trim();
+    const loan_id_param = String(req.query.loan_id || '').trim();
+    if (!borrower_id || !loan_id_param) {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
     }
 
     const [{ data: loan, error: loanErr }, { data: reg }] = await Promise.all([
       supabase
         .from('loans')
-        .select('outstanding_amount, next_due_date, device_status')
-        .eq('loan_id', loan_id)
+        .select('loan_id, outstanding_amount, next_due_date, device_status, installment_weeks, weekly_installment_amount')
+        .eq('loan_id', loan_id_param)
         .maybeSingle(),
       supabase
         .from('registrations')
@@ -402,16 +487,71 @@ router.get('/details', async (req, res) => {
     if (loanErr) throw loanErr;
     if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
 
+    /** Use loan_id from the loans row (canonical) so invoice rows always join even if query string had stray spaces/case drift. */
+    const canonicalLoanId = String(loan.loan_id || loan_id_param).trim();
+
+    const invRaw = await fetchLoanInvoicesForLoanRow(canonicalLoanId, borrower_id);
+
+    /** Include all rows that are not fully paid (pending, overdue, blank status, etc.). */
+    const isNotPaidInvoice = (status) => String(status || '').toLowerCase().trim() !== 'paid';
+
+    let invList = (invRaw || []).filter((r) => isNotPaidInvoice(r.status));
+
+    /** If borrower_id on invoice rows does not match the device (legacy / bad import), still show installments for this loan. */
+    const borrowerMatch = invList.filter((r) => String(r.borrower_id || '').trim() === borrower_id);
+    if (borrowerMatch.length > 0) invList = borrowerMatch;
+    else if (invList.length > 0) {
+      console.warn(`[device:details] loan ${canonicalLoanId}: invoice borrower_id mismatch vs ${borrower_id} — returning ${invList.length} rows by loan_id only`);
+    }
+
+    const nextInv = invList.length ? invList[0] : null;
+
     const due = loan.next_due_date ? new Date(loan.next_due_date).toLocaleDateString('en-TZ', {
       day: 'numeric', month: 'short', year: 'numeric'
     }) : null;
 
+    const totalInst = loan.installment_weeks != null ? Number(loan.installment_weeks) : null;
+    const weeklyFromLoan = loan.weekly_installment_amount != null
+      ? Number(loan.weekly_installment_amount)
+      : null;
+
+    /** Prefer next unpaid invoice row; fall back to loan.weekly_installment_amount for display. */
+    const nextAmount = nextInv != null
+      ? Number(nextInv.amount_due)
+      : (Number.isFinite(weeklyFromLoan) && weeklyFromLoan > 0 ? weeklyFromLoan : null);
+
+    const unpaidInvoices = (invList || []).map((r) => ({
+      invoice_number:     r.invoice_number,
+      installment_index:  r.installment_index,
+      borrower_name:      r.borrower_name,
+      amount_due:         Number(r.amount_due),
+      due_date:           r.due_date,
+      status:             r.status,
+      paid_at:            r.paid_at,
+    }));
+
+    /** Remaining balance: sum of unpaid invoice amounts (drops as installments are marked paid). If no invoice rows, use loans.outstanding_amount. */
+    const invRawAll = invRaw || [];
+    let balanceAmount;
+    if (invRawAll.length > 0) {
+      balanceAmount = invList.reduce((s, r) => s + Number(r.amount_due || 0), 0);
+    } else {
+      balanceAmount = Number(loan.outstanding_amount || 0);
+    }
+    const balanceStr = Number.isFinite(balanceAmount)
+      ? `TSh ${Math.max(0, Math.round(balanceAmount)).toLocaleString()}`
+      : null;
+
     return res.json({
       success:       true,
       loan_status:   loan.device_status || 'active',
-      balance:       loan.outstanding_amount != null
-                       ? `TSh ${Number(loan.outstanding_amount).toLocaleString()}` : null,
+      balance:       balanceStr,
       next_due_date: due,
+      weekly_installment_amount: Number.isFinite(weeklyFromLoan) && weeklyFromLoan > 0 ? weeklyFromLoan : null,
+      next_installment_amount: Number.isFinite(nextAmount) && nextAmount > 0 ? nextAmount : null,
+      next_installment_index: nextInv != null ? nextInv.installment_index : null,
+      total_installments: Number.isFinite(totalInst) && totalInst > 0 ? totalInst : null,
+      unpaid_invoices: unpaidInvoices,
       borrower_full_name: reg?.full_name || null,
       message:       'Loan details fetched'
     });
