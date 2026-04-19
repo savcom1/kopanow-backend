@@ -1,6 +1,12 @@
 <resources>
     <string name="app_name">Kopanow</string>
     <string name="main_toolbar_title">Kopanow Loan</string>
+    <string name="dashboard_next_installment_caption">Next installment</string>
+    <string name="dashboard_unpaid_invoices_caption">Installments (pending &amp; overdue)</string>
+    <string name="dashboard_unpaid_invoices_empty">No outstanding installments.</string>
+    <string name="invoice_row_title_fmt">%1$s</string>
+    <string name="invoice_row_sub_fmt">Due %1$s · %2$s</string>
+    <string name="next_due_none">No upcoming installment</string>
 
     <!-- Support (Tanzania) — shown across registration, main app, lock UI, notifications -->
     <string name="support_phone_tel" translatable="false">+255664212529</string>

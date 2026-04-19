@@ -79,7 +79,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvLoanBalance: TextView
     private lateinit var tvNextDue: TextView
     private lateinit var tvStatusBadge: TextView
-    
+    private lateinit var llUnpaidInvoices: LinearLayout
+    private lateinit var tvUnpaidInvoicesEmpty: TextView
+
     private lateinit var tvProtectionTitle: TextView
     private lateinit var tvProtectionSub: TextView
     private lateinit var ivProtectionStatus: ImageView
@@ -174,7 +176,9 @@ class MainActivity : AppCompatActivity() {
         tvLoanBalance = findViewById(R.id.tv_loan_balance)
         tvNextDue = findViewById(R.id.tv_next_due)
         tvStatusBadge = findViewById(R.id.tv_status_badge)
-        
+        llUnpaidInvoices = findViewById(R.id.ll_unpaid_invoices)
+        tvUnpaidInvoicesEmpty = findViewById(R.id.tv_unpaid_invoices_empty)
+
         tvProtectionTitle = findViewById(R.id.tv_protection_title)
         tvProtectionSub = findViewById(R.id.tv_protection_sub)
         ivProtectionStatus = findViewById(R.id.iv_protection_status)
@@ -321,6 +325,57 @@ class MainActivity : AppCompatActivity() {
         return KopanowPrefs.borrowerId?.trim().orEmpty().ifEmpty { "User" }
     }
 
+    private fun populateUnpaidInvoices(items: List<LoanInvoiceItem>?) {
+        if (!::llUnpaidInvoices.isInitialized) return
+        llUnpaidInvoices.removeAllViews()
+        val list = items.orEmpty()
+        if (list.isEmpty()) {
+            tvUnpaidInvoicesEmpty.visibility = View.VISIBLE
+            return
+        }
+        tvUnpaidInvoicesEmpty.visibility = View.GONE
+        val inflater = layoutInflater
+        for (inv in list) {
+            val row = inflater.inflate(R.layout.item_unpaid_invoice_row, llUnpaidInvoices, false)
+            val amountStr = String.format(Locale.getDefault(), "TSh %,.0f", inv.amountDue)
+            row.findViewById<TextView>(R.id.tv_unpaid_invoice_title).text =
+                getString(R.string.invoice_row_title_fmt, amountStr)
+            val dueLabel = formatInvoiceDueShort(inv.dueDate)
+            val statusLabel = inv.status.trim().replaceFirstChar { it.uppercaseChar() }
+            row.findViewById<TextView>(R.id.tv_unpaid_invoice_sub).text =
+                getString(R.string.invoice_row_sub_fmt, dueLabel, statusLabel)
+            llUnpaidInvoices.addView(row)
+        }
+    }
+
+    private fun formatInvoiceDueShort(iso: String): String {
+        if (iso.isBlank()) return "—"
+        return try {
+            val instant = Instant.parse(iso)
+            instant.atZone(ZoneId.systemDefault()).format(
+                DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())
+            )
+        } catch (_: Exception) {
+            iso.take(10)
+        }
+    }
+
+    /** Date line + weekly amount from GET /device/details (no installment index). */
+    private fun formatNextInstallmentDisplay(loan: LoanDetailsResponse): String {
+        val date = loan.nextDueDate?.trim()?.takeIf { it.isNotEmpty() }
+        val amtRaw = loan.nextInstallmentAmount ?: loan.weeklyInstallmentAmount
+        val amountStr = when {
+            amtRaw != null && amtRaw > 0 -> String.format(Locale.getDefault(), "TSh %,.0f", amtRaw)
+            else -> null
+        }
+        return when {
+            date != null && amountStr != null -> "$date\n$amountStr"
+            date != null -> date
+            amountStr != null -> amountStr
+            else -> getString(R.string.next_due_none)
+        }
+    }
+
     /** Pill badges: paid/active → green, pending/processing → amber, locked/overdue → red. */
     private fun applyLoanStatusBadge(rawStatus: String?) {
         val label = rawStatus?.replaceFirstChar { it.uppercase() } ?: "Unknown"
@@ -356,7 +411,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     tvWelcome.text = helloLine()
                     tvLoanBalance.text = loan.balance ?: "TSh 0.00"
-                    tvNextDue.text = loan.nextDueDate ?: "N/A"
+                    tvNextDue.text = formatNextInstallmentDisplay(loan)
+                    populateUnpaidInvoices(loan.unpaidInvoices)
                     applyLoanStatusBadge(loan.loanStatus)
                     if (DeviceSecurityManager.isAdminActive(this@MainActivity)) {
                         KopanowPrefs.mdmTamperShieldArmed = true

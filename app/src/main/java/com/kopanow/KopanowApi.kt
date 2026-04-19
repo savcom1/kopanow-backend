@@ -1,7 +1,9 @@
 package com.kopanow
 
 import android.util.Log
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.ToNumberPolicy
+import com.google.gson.reflect.TypeToken
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -224,6 +226,14 @@ data class LoanDetailsResponse(
     @SerializedName("loan_status")   val loanStatus: String?,
     @SerializedName("balance")       val balance: String?,
     @SerializedName("next_due_date") val nextDueDate: String?,
+    /** Next unpaid installment from `loan_invoices`, or same as [weeklyInstallmentAmount]. */
+    @SerializedName("next_installment_amount") val nextInstallmentAmount: Double? = null,
+    /** Scheduled weekly amount on the loan row (fallback if invoices missing). */
+    @SerializedName("weekly_installment_amount") val weeklyInstallmentAmount: Double? = null,
+    @SerializedName("next_installment_index") val nextInstallmentIndex: Int? = null,
+    @SerializedName("total_installments") val totalInstallments: Int? = null,
+    /** All unpaid weekly invoices (pending / overdue). */
+    @SerializedName("unpaid_invoices") val unpaidInvoices: List<LoanInvoiceItem>? = null,
     @SerializedName("borrower_full_name") val borrowerFullName: String? = null,
     @SerializedName("message")       val message: String?
 )
@@ -263,7 +273,10 @@ object KopanowApi {
         }
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
-    private val gson = Gson()
+    /** JSON numbers → Double for installment fields (avoids Int→Double parse gaps). */
+    private val gson = GsonBuilder()
+        .setObjectToNumberStrategy(ToNumberPolicy.DOUBLE)
+        .create()
 
     private val client: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor { Log.d(TAG, it) }.apply {
@@ -448,8 +461,31 @@ object KopanowApi {
             SystemPinReportResponse::class.java
         )
 
+    /**
+     * Uses [TypeToken] so Gson correctly deserializes [LoanDetailsResponse.unpaidInvoices] (generic list).
+     */
     suspend fun getLoanDetails(borrowerId: String, loanId: String): ApiResult<LoanDetailsResponse> =
-        get("/device/details", mapOf("borrower_id" to borrowerId, "loan_id" to loanId), LoanDetailsResponse::class.java)
+        withContext(Dispatchers.IO) {
+            try {
+                val urlBuilder = "$BASE_URL/device/details".toHttpUrlOrNull()?.newBuilder()
+                    ?: return@withContext ApiResult(success = false, error = "Invalid URL")
+                urlBuilder.addQueryParameter("borrower_id", borrowerId.trim())
+                urlBuilder.addQueryParameter("loan_id", loanId.trim())
+                val request = Request.Builder().url(urlBuilder.build()).get().build()
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    val type = object : TypeToken<LoanDetailsResponse>() {}.type
+                    val data = gson.fromJson<LoanDetailsResponse>(responseBody, type)
+                    ApiResult(success = true, data = data)
+                } else {
+                    ApiResult(success = false, error = "HTTP ${response.code}: $responseBody")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "GET /device/details failed", e)
+                ApiResult(success = false, error = e.message)
+            }
+        }
 
     suspend fun getFrpToken(borrowerId: String): String? {
         val result = get(

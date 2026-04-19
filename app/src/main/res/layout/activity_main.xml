@@ -139,7 +139,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Next due"
+                                android:text="@string/dashboard_next_installment_caption"
                                 android:textAppearance="@style/TextAppearance.Kopanow.Caption"
                                 android:textAllCaps="true"
                                 android:letterSpacing="0.06" />
@@ -149,8 +149,9 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
+                                android:lineSpacingExtra="2dp"
                                 android:textAppearance="@style/TextAppearance.Kopanow.Section"
-                                tools:text="Pending…" />
+                                tools:text="18 Apr 2026\nInstallment 3 of 12 · TSh 45,000" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -182,6 +183,32 @@
                                 android:fontFamily="@font/inter_semibold" />
                         </LinearLayout>
                     </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_3"
+                        android:text="@string/dashboard_unpaid_invoices_caption"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textAllCaps="true"
+                        android:letterSpacing="0.06" />
+
+                    <TextView
+                        android:id="@+id/tv_unpaid_invoices_empty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:text="@string/dashboard_unpaid_invoices_empty"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
+                        android:textColor="@color/kopanow_text_secondary"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/ll_unpaid_invoices"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:orientation="vertical" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_pay_now"

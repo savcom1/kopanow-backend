@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/grid_1"
+    app:cardBackgroundColor="@color/kopanow_surface"
+    app:cardCornerRadius="@dimen/corner_card"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/kopanow_border"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/grid_2">
+
+        <TextView
+            android:id="@+id/tv_unpaid_invoice_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/kopanow_navy"
+            android:textSize="@dimen/text_section"
+            android:fontFamily="@font/inter_semibold"
+            tools:text="Installment 3 · TSh 45,000" />
+
+        <TextView
+            android:id="@+id/tv_unpaid_invoice_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+            android:textColor="@color/kopanow_text_secondary"
+            tools:text="Due 18 Apr 2026 · Pending" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
