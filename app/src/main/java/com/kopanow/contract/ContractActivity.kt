@@ -25,8 +25,6 @@ import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_BORROWER_NAME
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_BORROWER_PHONE
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_BORROWER_REGION
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_CONTRACT_NUMBER
-import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_FIRST_REPAYMENT_DATE
-import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_LAST_REPAYMENT_DATE
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_LOAN_AMOUNT
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_LOAN_ID
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_LOAN_START_DATE
@@ -35,8 +33,6 @@ import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_TOTAL_REPAYMENT
 import com.kopanow.contract.LoanContractExtras.Companion.EXTRA_WEEKLY_INSTALLMENT
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 @AndroidEntryPoint
 class ContractActivity : AppCompatActivity() {
@@ -108,25 +104,22 @@ class ContractActivity : AppCompatActivity() {
         btnReject.setOnClickListener { finishCancelled() }
 
         btnAccept.setOnClickListener {
-            val acceptedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
             val deviceId = DeviceSecurityManager.getDeviceId(this)
+            val appVer = BuildConfig.VERSION_NAME?.takeIf { it.isNotBlank() } ?: "unknown"
             val req = ContractAcceptanceRequest(
                 contractNumber = extras.contractNumber,
                 loanId = extras.loanId,
                 borrowerId = extras.borrowerId,
-                borrowerName = extras.borrowerName,
-                borrowerPhone = extras.borrowerPhone,
-                borrowerRegion = extras.borrowerRegion,
-                loanAmountTzs = extras.loanAmountTzs,
-                totalRepaymentTzs = extras.totalRepaymentTzs,
-                weeklyInstallmentTzs = extras.weeklyInstallmentTzs,
-                numWeeks = extras.numWeeks,
-                loanStartDate = extras.loanStartDateIso,
-                firstRepaymentDate = extras.firstRepaymentDateIso,
-                lastRepaymentDate = extras.lastRepaymentDateIso,
-                androidDeviceId = deviceId,
-                appVersion = BuildConfig.VERSION_NAME,
-                acceptedAt = acceptedAt,
+                borrowerName = extras.borrowerName.takeIf { it.isNotBlank() },
+                borrowerPhone = extras.borrowerPhone.takeIf { it.isNotBlank() },
+                borrowerRegion = extras.borrowerRegion.takeIf { it.isNotBlank() },
+                firstRepaymentDate = ContractScheduleHelper.firstRepaymentDateIso(extras.loanStartDateIso),
+                lastRepaymentDate = ContractScheduleHelper.lastRepaymentDateIso(
+                    extras.loanStartDateIso,
+                    extras.numWeeks,
+                ),
+                androidDeviceId = deviceId.ifBlank { "unknown" },
+                appVersion = appVer,
             )
             viewModel.submitAcceptance(req)
         }
@@ -189,8 +182,6 @@ class ContractActivity : AppCompatActivity() {
             weeklyInstallment: Long,
             numWeeks: Int,
             loanStart: String,
-            firstRepay: String,
-            lastRepay: String,
             contractNumber: String,
         ) {
             intent.putExtra(EXTRA_LOAN_ID, loanId)
@@ -203,8 +194,6 @@ class ContractActivity : AppCompatActivity() {
             intent.putExtra(EXTRA_WEEKLY_INSTALLMENT, weeklyInstallment)
             intent.putExtra(EXTRA_NUM_WEEKS, numWeeks)
             intent.putExtra(EXTRA_LOAN_START_DATE, loanStart)
-            intent.putExtra(EXTRA_FIRST_REPAYMENT_DATE, firstRepay)
-            intent.putExtra(EXTRA_LAST_REPAYMENT_DATE, lastRepay)
             intent.putExtra(EXTRA_CONTRACT_NUMBER, contractNumber)
         }
     }

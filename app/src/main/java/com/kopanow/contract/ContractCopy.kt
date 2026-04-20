@@ -35,8 +35,16 @@ object ContractCopy {
         appendLine("Malipo ya kila wiki (TZS): ${tzs(extras.weeklyInstallmentTzs)}")
         appendLine("Idadi ya wiki za malipo: ${extras.numWeeks}")
         appendLine("Tarehe ya kuanza mkopo: ${extras.loanStartDateIso}")
-        appendLine("Malipo ya kwanza: ${extras.firstRepaymentDateIso}")
-        appendLine("Malipo ya mwisho: ${extras.lastRepaymentDateIso}")
+        val firstRepaymentLabel = scheduleRows.firstOrNull()?.dueDateLabel
+        appendLine(
+            "Tarehe ya malipo ya kwanza: " +
+                (firstRepaymentLabel ?: "—"),
+        )
+        val lastRepaymentLabel = scheduleRows.lastOrNull()?.dueDateLabel
+        appendLine(
+            "Tarehe ya malipo ya mwisho: " +
+                (lastRepaymentLabel ?: "—"),
+        )
         appendLine()
         appendLine("(3) RATIBA YA MALIPO")
         appendLine()
@@ -78,13 +86,13 @@ object ContractCopy {
         appendLine()
         appendLine("(7) MALIPO KUPITIA MIXX NA LIPA NAMBA")
         appendLine()
-        appendLine("Malipo yafanyike kupitia Mixx by Yas — Lipa namba: 8681154, jina la kufahamika: FRANK MLAKI.")
-        appendLine("Weka kumbukumbu ya malipo na nambari ya muamala (M-Pesa) kwa ajili ya uthibitisho.")
+        appendLine("Malipo yafanyike kupitia Mixx by Yas — Lipa namba: 8681154, jina la kufahamika: ELEGANSKY MICROFINANCE .")
+        appendLine("Weka kumbukumbu ya malipo na nambari ya muamala  kwa ajili ya uthibitisho.")
         appendLine()
         appendLine("(8) PENATI")
         appendLine()
         appendLine(
-            "Ikiwa malipo hayajafanyika kwa wakati, penati ya 10% ya kiasi kinachodaiwa kwa kila siku " +
+            "Ikiwa malipo hayajafanyika kwa wakati, simu itawekewa lock nakufunguliwa baada ya malipo " +
                 "ya ucheleweshaji inaweza kutumika mpaka malipo yote yamalizike, kulingana na sera ya " +
                 "kampuni."
         )

@@ -16,8 +16,6 @@ data class LoanContractExtras(
     val weeklyInstallmentTzs: Long,
     val numWeeks: Int,
     val loanStartDateIso: String,
-    val firstRepaymentDateIso: String,
-    val lastRepaymentDateIso: String,
     val contractNumber: String,
 ) {
     fun applyToIntent(target: Intent) {
@@ -31,8 +29,6 @@ data class LoanContractExtras(
         target.putExtra(EXTRA_WEEKLY_INSTALLMENT, weeklyInstallmentTzs)
         target.putExtra(EXTRA_NUM_WEEKS, numWeeks)
         target.putExtra(EXTRA_LOAN_START_DATE, loanStartDateIso)
-        target.putExtra(EXTRA_FIRST_REPAYMENT_DATE, firstRepaymentDateIso)
-        target.putExtra(EXTRA_LAST_REPAYMENT_DATE, lastRepaymentDateIso)
         target.putExtra(EXTRA_CONTRACT_NUMBER, contractNumber)
     }
 
@@ -47,8 +43,6 @@ data class LoanContractExtras(
         const val EXTRA_WEEKLY_INSTALLMENT = "WEEKLY_INSTALLMENT"
         const val EXTRA_NUM_WEEKS = "NUM_WEEKS"
         const val EXTRA_LOAN_START_DATE = "LOAN_START_DATE"
-        const val EXTRA_FIRST_REPAYMENT_DATE = "FIRST_REPAYMENT_DATE"
-        const val EXTRA_LAST_REPAYMENT_DATE = "LAST_REPAYMENT_DATE"
         const val EXTRA_CONTRACT_NUMBER = "CONTRACT_NUMBER"
 
         fun fromIntent(i: Intent): LoanContractExtras? {
@@ -66,8 +60,6 @@ data class LoanContractExtras(
                 weeklyInstallmentTzs = i.getLongExtra(EXTRA_WEEKLY_INSTALLMENT, 0L),
                 numWeeks = i.getIntExtra(EXTRA_NUM_WEEKS, 0),
                 loanStartDateIso = i.getStringExtra(EXTRA_LOAN_START_DATE).orEmpty(),
-                firstRepaymentDateIso = i.getStringExtra(EXTRA_FIRST_REPAYMENT_DATE).orEmpty(),
-                lastRepaymentDateIso = i.getStringExtra(EXTRA_LAST_REPAYMENT_DATE).orEmpty(),
                 contractNumber = contractNumber,
             )
         }

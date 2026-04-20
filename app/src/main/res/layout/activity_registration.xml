@@ -26,7 +26,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/grid_1"
-            android:text="Fill your details and request a loan. Activation will be available after your request is submitted."
+            android:text="@string/reg_sub_with_device_setup"
             android:textAppearance="@style/TextAppearance.Kopanow.Body"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"

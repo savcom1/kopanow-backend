@@ -23,12 +23,18 @@ class ContractViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = ContractSubmitState(isSubmitting = true, error = null, success = false)
             val result = repository.submitContract(body)
-            if (result.success && result.data?.success == true) {
+            val ok = result.success &&
+                result.data != null &&
+                result.data.success
+            if (ok) {
                 _uiState.value = ContractSubmitState(isSubmitting = false, error = null, success = true)
             } else {
+                val msg = result.data?.message?.takeIf { it.isNotBlank() }
+                    ?: result.error?.takeIf { it.isNotBlank() }
+                    ?: "Imeshindwa kuhifadhi."
                 _uiState.value = ContractSubmitState(
                     isSubmitting = false,
-                    error = result.data?.message ?: result.error ?: "Imeshindwa kuhifadhi.",
+                    error = msg,
                     success = false,
                 )
             }

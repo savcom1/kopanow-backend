@@ -455,7 +455,40 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/grid_2"
-                        android:text="Live requirements"
+                        android:text="@string/compliance_guided_title"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Section"
+                        android:textColor="@color/kopanow_navy" />
+
+                    <TextView
+                        android:id="@+id/tv_compliance_progress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
+                        android:textColor="@color/kopanow_text_primary"
+                        tools:text="Progress: 5 / 7" />
+
+                    <TextView
+                        android:id="@+id/tv_compliance_soft_note"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/compliance_guided_soft_note"
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textColor="@color/kopanow_text_secondary" />
+
+                    <LinearLayout
+                        android:id="@+id/ll_compliance_guided_steps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_1"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:text="@string/compliance_full_status_label"
                         android:textAppearance="@style/TextAppearance.Kopanow.Caption"
                         android:textAllCaps="true"
                         android:letterSpacing="0.06" />
@@ -467,8 +500,8 @@
                         android:layout_marginTop="6dp"
                         android:lineSpacingExtra="3dp"
                         android:text="…"
-                        android:textAppearance="@style/TextAppearance.Kopanow.Body"
-                        android:textColor="@color/kopanow_text_primary" />
+                        android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                        android:textColor="@color/kopanow_text_secondary" />
 
                     <TextView
                         android:layout_width="match_parent"

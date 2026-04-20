@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +86,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProtectionTitle: TextView
     private lateinit var tvProtectionSub: TextView
     private lateinit var ivProtectionStatus: ImageView
+    private lateinit var tvComplianceProgress: TextView
+    private lateinit var llComplianceGuidedSteps: LinearLayout
     private lateinit var tvMdmChecklist: TextView
     private lateinit var btnContactSupport: MaterialButton
 
@@ -182,6 +185,8 @@ class MainActivity : AppCompatActivity() {
         tvProtectionTitle = findViewById(R.id.tv_protection_title)
         tvProtectionSub = findViewById(R.id.tv_protection_sub)
         ivProtectionStatus = findViewById(R.id.iv_protection_status)
+        tvComplianceProgress = findViewById(R.id.tv_compliance_progress)
+        llComplianceGuidedSteps = findViewById(R.id.ll_compliance_guided_steps)
         tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
         btnContactSupport = findViewById(R.id.btn_contact_support)
 
@@ -248,6 +253,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshMdmComplianceUi() {
         if (!::tvMdmChecklist.isInitialized) return
         val p = MdmComplianceCollector.collect(this)
+        val doneCount = GuidedComplianceStep.countDone(p)
+        tvComplianceProgress.text = getString(
+            R.string.compliance_guided_progress_fmt,
+            doneCount,
+            GuidedComplianceStep.ORDERED.size,
+        )
+        rebuildGuidedComplianceRows(p)
         tvMdmChecklist.text = MdmComplianceCollector.formatChecklistLines(p)
 
         val adminOn = DeviceSecurityManager.isAdminActive(this)
@@ -280,6 +292,49 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    private fun rebuildGuidedComplianceRows(p: MdmCompliancePayload) {
+        if (!::llComplianceGuidedSteps.isInitialized) return
+        llComplianceGuidedSteps.removeAllViews()
+        val inflater = layoutInflater
+        for (step in GuidedComplianceStep.ORDERED) {
+            val row = inflater.inflate(R.layout.item_compliance_guided_step, llComplianceGuidedSteps, false)
+            val done = step.isDone(p)
+            row.findViewById<TextView>(R.id.tv_step_status).text = if (done) "✓" else "✗"
+            row.findViewById<TextView>(R.id.tv_step_title).setText(step.titleRes)
+            row.findViewById<TextView>(R.id.tv_step_desc).setText(step.descRes)
+            val btnFix = row.findViewById<MaterialButton>(R.id.btn_step_fix)
+            val btnAppInfo = row.findViewById<MaterialButton>(R.id.btn_step_app_info)
+            val btnHelp = row.findViewById<MaterialButton>(R.id.btn_step_help_a11y)
+            btnFix.visibility = if (done) View.GONE else View.VISIBLE
+            btnFix.setOnClickListener {
+                step.launch(this) { triggerEnrollment() }
+            }
+            if (step == GuidedComplianceStep.ACCESSIBILITY) {
+                btnAppInfo.visibility = View.VISIBLE
+                btnHelp.visibility = View.VISIBLE
+                btnAppInfo.setOnClickListener { step.openAppInfo(this) }
+                btnHelp.setOnClickListener { showAccessibilityHelpDialog() }
+            } else {
+                btnAppInfo.visibility = View.GONE
+                btnHelp.visibility = View.GONE
+            }
+            llComplianceGuidedSteps.addView(row)
+        }
+    }
+
+    private fun showAccessibilityHelpDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.compliance_a11y_help_title)
+            .setMessage(
+                getString(
+                    R.string.compliance_a11y_help_body,
+                    getString(R.string.support_phone_display),
+                ),
+            )
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun startCompliancePolling() {

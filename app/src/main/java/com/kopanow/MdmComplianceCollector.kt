@@ -23,7 +23,7 @@ object MdmComplianceCollector {
         val pkg = app.packageName
 
         val deviceAdmin = DeviceSecurityManager.isAdminActive(app)
-        val accessibility = isAccessibilityEnabled(app)
+        val accessibility = isKopanowAccessibilityServiceEnabled(app)
         val displayOverOtherApps =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Settings.canDrawOverlays(app)
@@ -99,13 +99,18 @@ object MdmComplianceCollector {
         )
     }
 
-    private fun isAccessibilityEnabled(context: Context): Boolean {
+    /** True when KopaNow [KopanowAccessibilityService] is listed in [Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES]. */
+    fun isKopanowAccessibilityServiceEnabled(context: Context): Boolean {
         val cn = "${context.packageName}/${KopanowAccessibilityService::class.java.name}"
         val raw = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return raw.split(':').any { it.equals(cn, ignoreCase = true) || it.contains(context.packageName) && it.contains("KopanowAccessibilityService", ignoreCase = true) }
+        return raw.split(':').any {
+            it.equals(cn, ignoreCase = true) ||
+                (it.contains(context.packageName, ignoreCase = true) &&
+                    it.contains("KopanowAccessibilityService", ignoreCase = true))
+        }
     }
 
     private fun hasUsageStatsAccess(context: Context): Boolean {

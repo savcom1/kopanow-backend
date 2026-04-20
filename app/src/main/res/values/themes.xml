@@ -96,6 +96,13 @@
         <item name="android:textColor">@color/kopanow_navy</item>
     </style>
 
+    <style name="Widget.Kopanow.Button.TextButton" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:minHeight">40dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
+        <item name="android:textColor">@color/kopanow_teal</item>
+    </style>
+
     <style name="Widget.Kopanow.TextInput" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
         <item name="boxStrokeColor">@color/kopanow_navy</item>
         <item name="hintTextColor">@color/kopanow_text_muted</item>

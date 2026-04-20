@@ -44,6 +44,15 @@
                 android:textSize="13sp" />
 
             <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp"
+                android:text="@string/contract_setup_reminder"
+                android:textColor="@color/contract_dark"
+                android:textSize="12sp"
+                android:alpha="0.85" />
+
+            <TextView
                 android:id="@+id/tv_contract_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

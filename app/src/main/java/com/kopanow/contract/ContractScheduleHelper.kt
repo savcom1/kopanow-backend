@@ -15,6 +15,27 @@ data class ScheduleRow(val weekIndex: Int, val dueDateLabel: String, val amountT
 
 object ContractScheduleHelper {
 
+    /**
+     * First weekly installment due = loan schedule start + 1 week (same rule as [buildWeeklyRows] week 1).
+     * ISO-8601 UTC for [contract_acceptances.first_repayment_date].
+     */
+    fun firstRepaymentDateIso(loanStartIso: String): String? {
+        val startInstant = runCatching { Instant.parse(loanStartIso.trim()) }.getOrNull() ?: return null
+        val zStart = startInstant.atZone(TZ)
+        return zStart.plusWeeks(1).toInstant().toString()
+    }
+
+    /**
+     * Final weekly installment due = loan schedule start + [numWeeks] weeks (same as [buildWeeklyRows] last row).
+     * ISO-8601 UTC for [contract_acceptances.last_repayment_date].
+     */
+    fun lastRepaymentDateIso(loanStartIso: String, numWeeks: Int): String? {
+        if (numWeeks <= 0) return null
+        val startInstant = runCatching { Instant.parse(loanStartIso.trim()) }.getOrNull() ?: return null
+        val zStart = startInstant.atZone(TZ)
+        return zStart.plusWeeks(numWeeks.toLong()).toInstant().toString()
+    }
+
     /** Equal weekly amounts; last installment absorbs rounding (matches backend loan_invoices). */
     fun buildWeeklyRows(
         loanStartIso: String,

@@ -211,11 +211,9 @@ data class LoanRequestResponse(
     @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Double? = null,
     @SerializedName("num_weeks") val numWeeks: Int? = null,
     @SerializedName("loan_start_date") val loanStartDate: String? = null,
-    @SerializedName("first_repayment_date") val firstRepaymentDate: String? = null,
-    @SerializedName("last_repayment_date") val lastRepaymentDate: String? = null,
 )
 
-/** POST /loan/contract-acceptance — stored in Supabase [contract_acceptances]. */
+/** POST /loan/contract-acceptance — minimal payload for [contract_acceptances]. */
 data class ContractAcceptanceRequest(
     @SerializedName("contract_number") val contractNumber: String,
     @SerializedName("loan_id") val loanId: String,
@@ -223,16 +221,12 @@ data class ContractAcceptanceRequest(
     @SerializedName("borrower_name") val borrowerName: String?,
     @SerializedName("borrower_phone") val borrowerPhone: String?,
     @SerializedName("borrower_region") val borrowerRegion: String?,
-    @SerializedName("loan_amount_tzs") val loanAmountTzs: Long?,
-    @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Long?,
-    @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Long?,
-    @SerializedName("num_weeks") val numWeeks: Int?,
-    @SerializedName("loan_start_date") val loanStartDate: String?,
+    /** ISO-8601; first installment due (loan start + 1 week), matches on-screen schedule week 1. */
     @SerializedName("first_repayment_date") val firstRepaymentDate: String?,
+    /** ISO-8601; final installment due (loan start + numWeeks weeks), matches schedule last row. */
     @SerializedName("last_repayment_date") val lastRepaymentDate: String?,
-    @SerializedName("android_device_id") val androidDeviceId: String?,
-    @SerializedName("app_version") val appVersion: String?,
-    @SerializedName("accepted_at") val acceptedAt: String,
+    @SerializedName("android_device_id") val androidDeviceId: String,
+    @SerializedName("app_version") val appVersion: String,
 )
 
 data class ContractAcceptanceResponse(
@@ -470,8 +464,25 @@ object KopanowApi {
     suspend fun requestLoan(request: LoanRequest): ApiResult<LoanRequestResponse> =
         post("/loan/request", request, LoanRequestResponse::class.java)
 
-    suspend fun submitContractAcceptance(body: ContractAcceptanceRequest): ApiResult<ContractAcceptanceResponse> =
-        post("/loan/contract-acceptance", body, ContractAcceptanceResponse::class.java)
+    /**
+     * Sends snake_case JSON keys explicitly. Gson often serializes Kotlin `data class` properties
+     * as camelCase (`contractNumber`), which breaks the Node/PostgREST API expecting `contract_number`.
+     */
+    suspend fun submitContractAcceptance(body: ContractAcceptanceRequest): ApiResult<ContractAcceptanceResponse> {
+        val payload = buildMap<String, Any> {
+            put("contract_number", body.contractNumber)
+            put("loan_id", body.loanId)
+            put("borrower_id", body.borrowerId)
+            body.borrowerName?.takeIf { it.isNotBlank() }?.let { put("borrower_name", it) }
+            body.borrowerPhone?.takeIf { it.isNotBlank() }?.let { put("borrower_phone", it) }
+            body.borrowerRegion?.takeIf { it.isNotBlank() }?.let { put("borrower_region", it) }
+            body.firstRepaymentDate?.takeIf { it.isNotBlank() }?.let { put("first_repayment_date", it) }
+            body.lastRepaymentDate?.takeIf { it.isNotBlank() }?.let { put("last_repayment_date", it) }
+            put("android_device_id", body.androidDeviceId)
+            put("app_version", body.appVersion)
+        }
+        return post("/loan/contract-acceptance", payload, ContractAcceptanceResponse::class.java)
+    }
 
     suspend fun pollPaymentStatus(
         borrowerId: String,

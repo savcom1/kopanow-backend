@@ -254,8 +254,6 @@ class RegistrationActivity : AppCompatActivity() {
                             weeklyInstallment = weekly,
                             numWeeks = weeks,
                             loanStart = dr.loanStartDate.orEmpty(),
-                            firstRepay = dr.firstRepaymentDate.orEmpty(),
-                            lastRepay = dr.lastRepaymentDate.orEmpty(),
                             contractNumber = cNum,
                         )
                         contractLauncher.launch(i)
