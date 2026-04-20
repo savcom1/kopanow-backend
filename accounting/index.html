@@ -45,6 +45,15 @@
         <h2>Books &amp; loan records</h2>
         <p class="muted">Collections are based on <strong>lipa_transactions</strong> (all borrower inbound payments). Use <strong>ingested_at</strong> for the collections date range.</p>
         <p class="muted">Edits to borrowers and loans are audited. Enter a <strong>reason</strong> on every change.</p>
+        <h3 class="mt">Portfolio at risk (PAR)</h3>
+        <p class="muted kpi-sub">Balance-weighted: loans with an unpaid installment past due by ≥N days contribute full <code>outstanding_amount</code> to PARn. Denominator = all loans with outstanding &gt; 0.</p>
+        <div class="kpi-grid" id="par-kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">PAR1 %</div><div class="kpi-val" id="kpi-par1">—</div><div class="kpi-sub" id="kpi-par1-bal"></div></div>
+          <div class="kpi-card"><div class="kpi-label">PAR30 %</div><div class="kpi-val" id="kpi-par30">—</div><div class="kpi-sub" id="kpi-par30-bal"></div></div>
+          <div class="kpi-card"><div class="kpi-label">PAR90 %</div><div class="kpi-val" id="kpi-par90">—</div><div class="kpi-sub" id="kpi-par90-bal"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Gross portfolio</div><div class="kpi-val" id="kpi-portfolio">—</div><div class="kpi-sub" id="kpi-par30-count"></div></div>
+        </div>
+        <p class="muted"><button type="button" class="btn btn-secondary" id="btn-refresh-par">Refresh PAR</button> <span id="par-as-of"></span></p>
       </div>
     </section>
 
@@ -141,6 +150,43 @@
         <button type="button" class="btn btn-primary" id="btn-aging-run">Run</button>
         <button type="button" class="btn btn-secondary" id="btn-aging-csv">Download CSV</button>
         <pre id="aging-out" class="code-block"></pre>
+      </div>
+      <div class="card mt">
+        <h3>PAR (detail)</h3>
+        <p class="muted">Same KPI as Home; JSON includes definitions.</p>
+        <button type="button" class="btn btn-primary" id="btn-par-run">Run</button>
+        <pre id="par-out" class="code-block"></pre>
+      </div>
+      <div class="card mt">
+        <h3>Expected vs actual (schedule vs Lipa)</h3>
+        <p class="muted">Expected = installments with <strong>due_date</strong> in range. Actual = <strong>Lipa</strong> rows with <strong>ingested_at</strong> in range (by claimed loan).</p>
+        <div class="form-row">
+          <label>From <input type="date" id="eva-from" /></label>
+          <label>To <input type="date" id="eva-to" /></label>
+          <button type="button" class="btn btn-primary" id="btn-eva-run">Run</button>
+          <button type="button" class="btn btn-secondary" id="btn-eva-csv">Download CSV</button>
+        </div>
+        <pre id="eva-out" class="code-block"></pre>
+      </div>
+      <div class="card mt">
+        <h3>Disbursement register</h3>
+        <div class="form-row">
+          <label>From <input type="date" id="dis-from" /></label>
+          <label>To <input type="date" id="dis-to" /></label>
+          <button type="button" class="btn btn-primary" id="btn-dis-run">Run</button>
+          <button type="button" class="btn btn-secondary" id="btn-dis-csv">Download CSV</button>
+        </div>
+        <pre id="dis-out" class="code-block"></pre>
+      </div>
+      <div class="card mt">
+        <h3>Upcoming installments (maturity window)</h3>
+        <p class="muted">Pending/overdue installments with due date within N days from now.</p>
+        <div class="form-row">
+          <label>Within days <input type="number" id="mat-days" value="30" min="1" max="365" /></label>
+          <button type="button" class="btn btn-primary" id="btn-mat-run">Run</button>
+          <button type="button" class="btn btn-secondary" id="btn-mat-csv">Download CSV</button>
+        </div>
+        <pre id="mat-out" class="code-block"></pre>
       </div>
     </section>
 

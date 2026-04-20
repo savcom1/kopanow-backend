@@ -259,6 +259,14 @@ async function runCollectionsJson() {
   $('#collections-out').textContent = JSON.stringify(data, null, 2);
 }
 
+function csvDownloadName(path) {
+  if (path.includes('expected-vs-actual')) return 'expected-vs-actual.csv';
+  if (path.includes('disbursements')) return 'disbursements.csv';
+  if (path.includes('maturity')) return 'maturity-upcoming.csv';
+  if (path.includes('aging')) return 'ar-aging.csv';
+  return 'collections-lipa.csv';
+}
+
 async function downloadCsv(path) {
   const h = headers(false);
   const res = await fetch(`${API}${path}`, { headers: h });
@@ -269,7 +277,7 @@ async function downloadCsv(path) {
   const blob = await res.blob();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = path.includes('aging') ? 'ar-aging.csv' : 'collections-lipa.csv';
+  a.download = csvDownloadName(path);
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -277,6 +285,61 @@ async function downloadCsv(path) {
 async function runAgingJson() {
   const data = await apiFetch('/reports/aging?format=json');
   $('#aging-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function loadParKpis() {
+  const data = await apiFetch('/reports/par');
+  const p = data.par;
+  $('#kpi-par1').textContent = `${p.par1.pct}%`;
+  $('#kpi-par1-bal').textContent = `TZS ${p.par1.balance.toLocaleString()}`;
+  $('#kpi-par30').textContent = `${p.par30.pct}%`;
+  $('#kpi-par30-bal').textContent = `TZS ${p.par30.balance.toLocaleString()}`;
+  $('#kpi-par90').textContent = `${p.par90.pct}%`;
+  $('#kpi-par90-bal').textContent = `TZS ${p.par90.balance.toLocaleString()}`;
+  $('#kpi-portfolio').textContent = `TZS ${data.portfolio_gross_outstanding.toLocaleString()}`;
+  $('#kpi-par30-count').textContent = `${data.loan_count_in_par30} loans in PAR30`;
+  $('#par-as-of').textContent = `As of ${new Date(data.as_of).toLocaleString()}`;
+}
+
+async function runParDetail() {
+  const data = await apiFetch('/reports/par');
+  $('#par-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function runEvaJson() {
+  const from = $('#eva-from').value;
+  const to = $('#eva-to').value;
+  if (!from || !to) {
+    toast('Pick from and to (Expected vs actual)', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  const data = await apiFetch(
+    `/reports/expected-vs-actual?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=json`,
+  );
+  $('#eva-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function runDisJson() {
+  const from = $('#dis-from').value;
+  const to = $('#dis-to').value;
+  if (!from || !to) {
+    toast('Pick disbursement date range', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  const data = await apiFetch(
+    `/reports/disbursements?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=json`,
+  );
+  $('#dis-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function runMatJson() {
+  const days = Math.min(365, Math.max(1, parseInt($('#mat-days').value, 10) || 30));
+  const data = await apiFetch(`/reports/maturity?withinDays=${days}&format=json`);
+  $('#mat-out').textContent = JSON.stringify(data, null, 2);
 }
 
 async function loadQueueLipa() {
@@ -325,6 +388,7 @@ function wireNav() {
         loadQueueRefs().catch((e) => toast(e.message, true));
       }
       if (v === 'audit') loadAudit().catch((e) => toast(e.message, true));
+      if (v === 'home') loadParKpis().catch((e) => toast(e.message, true));
     });
   });
 }
@@ -357,6 +421,45 @@ $('#btn-collections-csv').addEventListener('click', () => {
 $('#btn-aging-run').addEventListener('click', () => runAgingJson().catch((e) => toast(e.message, true)));
 $('#btn-aging-csv').addEventListener('click', () => downloadCsv('/reports/aging?format=csv').catch((e) => toast(e.message, true)));
 
+$('#btn-refresh-par').addEventListener('click', () => loadParKpis().catch((e) => toast(e.message, true)));
+$('#btn-par-run').addEventListener('click', () => runParDetail().catch((e) => toast(e.message, true)));
+
+$('#btn-eva-run').addEventListener('click', () => runEvaJson().catch((e) => toast(e.message, true)));
+$('#btn-eva-csv').addEventListener('click', () => {
+  const from = $('#eva-from').value;
+  const to = $('#eva-to').value;
+  if (!from || !to) {
+    toast('Pick from and to', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  downloadCsv(
+    `/reports/expected-vs-actual?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=csv`,
+  ).catch((e) => toast(e.message, true));
+});
+
+$('#btn-dis-run').addEventListener('click', () => runDisJson().catch((e) => toast(e.message, true)));
+$('#btn-dis-csv').addEventListener('click', () => {
+  const from = $('#dis-from').value;
+  const to = $('#dis-to').value;
+  if (!from || !to) {
+    toast('Pick from and to', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  downloadCsv(
+    `/reports/disbursements?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=csv`,
+  ).catch((e) => toast(e.message, true));
+});
+
+$('#btn-mat-run').addEventListener('click', () => runMatJson().catch((e) => toast(e.message, true)));
+$('#btn-mat-csv').addEventListener('click', () => {
+  const days = Math.min(365, Math.max(1, parseInt($('#mat-days').value, 10) || 30));
+  downloadCsv(`/reports/maturity?withinDays=${days}&format=csv`).catch((e) => toast(e.message, true));
+});
+
 $('#btn-queue-lipa').addEventListener('click', () => loadQueueLipa().catch((e) => toast(e.message, true)));
 $('#btn-queue-refs').addEventListener('click', () => loadQueueRefs().catch((e) => toast(e.message, true)));
 $('#btn-audit-refresh').addEventListener('click', () => loadAudit().catch((e) => toast(e.message, true)));
@@ -368,6 +471,14 @@ wireNav();
   const to = new Date();
   const from = new Date(to);
   from.setDate(from.getDate() - 30);
-  $('#rep-to').value = to.toISOString().slice(0, 10);
-  $('#rep-from').value = from.toISOString().slice(0, 10);
+  const fs = from.toISOString().slice(0, 10);
+  const ts = to.toISOString().slice(0, 10);
+  $('#rep-to').value = ts;
+  $('#rep-from').value = fs;
+  $('#eva-from').value = fs;
+  $('#eva-to').value = ts;
+  $('#dis-from').value = fs;
+  $('#dis-to').value = ts;
 })();
+
+loadParKpis().catch((e) => toast(e.message, true));

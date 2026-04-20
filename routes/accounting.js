@@ -567,6 +567,303 @@ router.get('/reports/aging', async (req, res) => {
   }
 });
 
+/**
+ * PAR (Portfolio at Risk): balance-weighted % of gross portfolio with worst unpaid installment
+ * at least N days past due (as of `asOf`). Numerator = full loans.outstanding_amount for those loans.
+ * Denominator = sum(outstanding_amount) for all loans with outstanding_amount > 0.
+ */
+// ── GET /api/accounting/reports/par?asOf=ISO ───────────────────────────────
+router.get('/reports/par', async (req, res) => {
+  try {
+    const asOfRaw = req.query.asOf != null ? String(req.query.asOf).trim() : '';
+    const asOf = asOfRaw ? new Date(asOfRaw) : new Date();
+    if (Number.isNaN(asOf.getTime())) {
+      return res.status(400).json({ success: false, error: 'Invalid asOf date' });
+    }
+    const asOfMs = asOf.getTime();
+    const dayMs = 86400000;
+
+    const { data: loans, error: le } = await supabase
+      .from('loans')
+      .select('loan_id, borrower_id, outstanding_amount, device_status')
+      .gt('outstanding_amount', 0);
+    if (le) throw le;
+
+    const { data: invs, error: ie } = await supabase
+      .from('loan_invoices')
+      .select('loan_id, due_date, status')
+      .in('status', ['pending', 'overdue']);
+    if (ie) throw ie;
+
+    /** @type {Map<string, number>} max calendar days past due for any unpaid installment */
+    const loanMaxDaysPast = new Map();
+    for (const inv of invs || []) {
+      const due = new Date(inv.due_date).getTime();
+      if (due >= asOfMs) continue;
+      const daysPast = Math.floor((asOfMs - due) / dayMs);
+      const cur = loanMaxDaysPast.get(inv.loan_id) || 0;
+      loanMaxDaysPast.set(inv.loan_id, Math.max(cur, daysPast));
+    }
+
+    let portfolioGross = 0;
+    let balancePar1 = 0;
+    let balancePar30 = 0;
+    let balancePar90 = 0;
+    const loanIdsPar30 = [];
+
+    for (const l of loans || []) {
+      const o = Number(l.outstanding_amount) || 0;
+      if (o <= 0) continue;
+      portfolioGross += o;
+      const maxD = loanMaxDaysPast.get(l.loan_id) || 0;
+      if (maxD >= 1) balancePar1 += o;
+      if (maxD >= 30) {
+        balancePar30 += o;
+        loanIdsPar30.push(l.loan_id);
+      }
+      if (maxD >= 90) balancePar90 += o;
+    }
+
+    const pct = (num, den) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
+
+    return res.json({
+      success: true,
+      as_of: asOf.toISOString(),
+      definition: {
+        denominator:
+          'Sum of loans.outstanding_amount for all loans with outstanding_amount > 0.',
+        numerator:
+          'For each such loan, max days past due = longest delay among pending/overdue installments with due_date < asOf. If max >= N, add full loan outstanding to PARn balance.',
+        par_pct: 'PARn balance / denominator * 100',
+      },
+      portfolio_gross_outstanding: Math.round(portfolioGross * 100) / 100,
+      par: {
+        par1: { balance: Math.round(balancePar1 * 100) / 100, pct: pct(balancePar1, portfolioGross) },
+        par30: { balance: Math.round(balancePar30 * 100) / 100, pct: pct(balancePar30, portfolioGross) },
+        par90: { balance: Math.round(balancePar90 * 100) / 100, pct: pct(balancePar90, portfolioGross) },
+      },
+      loan_count_in_par30: loanIdsPar30.length,
+    });
+  } catch (err) {
+    console.error('[accounting:par]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+/**
+ * Expected = sum(amount_due) for installments with due_date in [from,to].
+ * Actual = sum(lipa_transactions.amount) with ingested_at in [from,to] (borrower cash-in truth).
+ * Per-loan: expected from invoices; actual from Lipa rows with claimed_loan_id.
+ */
+// ── GET /api/accounting/reports/expected-vs-actual ─────────────────────────
+router.get('/reports/expected-vs-actual', async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from).toISOString() : null;
+    const to = req.query.to ? new Date(req.query.to).toISOString() : null;
+    if (!from || !to || Number.isNaN(new Date(from).getTime()) || Number.isNaN(new Date(to).getTime())) {
+      return res.status(400).json({ success: false, error: 'from and to (ISO dates) are required' });
+    }
+    const format = String(req.query.format || 'json').toLowerCase();
+
+    const { data: invs, error: ie } = await supabase
+      .from('loan_invoices')
+      .select('loan_id, borrower_id, amount_due, due_date, status, installment_index')
+      .gte('due_date', from)
+      .lte('due_date', to)
+      .limit(100000);
+    if (ie) throw ie;
+
+    let expectedTotal = 0;
+    const expectedByLoan = new Map();
+    for (const inv of invs || []) {
+      const a = Number(inv.amount_due) || 0;
+      expectedTotal += a;
+      const lid = inv.loan_id;
+      expectedByLoan.set(lid, (expectedByLoan.get(lid) || 0) + a);
+    }
+
+    const { data: lipaRows, error: le } = await supabase
+      .from('lipa_transactions')
+      .select('amount, claimed_loan_id, ingested_at, transaction_ref')
+      .gte('ingested_at', from)
+      .lte('ingested_at', to)
+      .limit(50000);
+    if (le) throw le;
+
+    let actualTotal = 0;
+    const actualByLoan = new Map();
+    for (const row of lipaRows || []) {
+      const a = Number(row.amount) || 0;
+      actualTotal += a;
+      const lid = row.claimed_loan_id;
+      if (lid) {
+        actualByLoan.set(lid, (actualByLoan.get(lid) || 0) + a);
+      }
+    }
+
+    const allLoanIds = new Set([...expectedByLoan.keys(), ...actualByLoan.keys()]);
+    const perLoan = [];
+    for (const loanId of allLoanIds) {
+      const exp = expectedByLoan.get(loanId) || 0;
+      const act = actualByLoan.get(loanId) || 0;
+      perLoan.push({
+        loan_id: loanId,
+        expected_due_in_period: Math.round(exp * 100) / 100,
+        lipa_claimed_in_period: Math.round(act * 100) / 100,
+        shortfall: Math.round((exp - act) * 100) / 100,
+      });
+    }
+    perLoan.sort((a, b) => Math.abs(b.shortfall) - Math.abs(a.shortfall));
+
+    const summary = {
+      basis_expected: 'loan_invoices.due_date in [from,to] (all installments scheduled in period)',
+      basis_actual: 'lipa_transactions.ingested_at in [from,to]; amounts summed by claimed_loan_id',
+      from,
+      to,
+      expected_total: Math.round(expectedTotal * 100) / 100,
+      lipa_cash_total: Math.round(actualTotal * 100) / 100,
+      portfolio_shortfall: Math.round((expectedTotal - actualTotal) * 100) / 100,
+    };
+
+    if (format === 'csv') {
+      const lines = [
+        toCsvRow(['loan_id', 'expected_due_in_period', 'lipa_claimed_in_period', 'shortfall']),
+      ];
+      for (const r of perLoan) {
+        lines.push(toCsvRow([r.loan_id, r.expected_due_in_period, r.lipa_claimed_in_period, r.shortfall]));
+      }
+      lines.push(toCsvRow(['TOTAL', summary.expected_total, summary.lipa_cash_total, summary.portfolio_shortfall]));
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="expected-vs-actual.csv"');
+      return res.send(lines.join('\n'));
+    }
+
+    return res.json({
+      success: true,
+      summary,
+      per_loan: perLoan,
+    });
+  } catch (err) {
+    console.error('[accounting:expected-vs-actual]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ── GET /api/accounting/reports/disbursements?from=&to=&format= ─────────────
+router.get('/reports/disbursements', async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from).toISOString() : null;
+    const to = req.query.to ? new Date(req.query.to).toISOString() : null;
+    if (!from || !to) {
+      return res.status(400).json({ success: false, error: 'from and to (ISO dates) are required' });
+    }
+    const format = String(req.query.format || 'json').toLowerCase();
+
+    const { data: rows, error } = await supabase
+      .from('loans')
+      .select('loan_id, borrower_id, principal_amount, outstanding_amount, disbursed_at, device_status')
+      .not('disbursed_at', 'is', null)
+      .gte('disbursed_at', from)
+      .lte('disbursed_at', to)
+      .order('disbursed_at', { ascending: false })
+      .limit(10000);
+    if (error) throw error;
+
+    const list = rows || [];
+    let principalSum = 0;
+    for (const r of list) principalSum += Number(r.principal_amount) || 0;
+
+    if (format === 'csv') {
+      const header = toCsvRow(['disbursed_at', 'loan_id', 'borrower_id', 'principal_amount', 'outstanding_amount', 'device_status']);
+      const lines = [header];
+      for (const r of list) {
+        lines.push(
+          toCsvRow([
+            r.disbursed_at,
+            r.loan_id,
+            r.borrower_id,
+            r.principal_amount,
+            r.outstanding_amount,
+            r.device_status,
+          ]),
+        );
+      }
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="disbursements.csv"');
+      return res.send(lines.join('\n'));
+    }
+
+    return res.json({
+      success: true,
+      from,
+      to,
+      count: list.length,
+      principal_total: Math.round(principalSum * 100) / 100,
+      loans: list,
+    });
+  } catch (err) {
+    console.error('[accounting:disbursements]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ── GET /api/accounting/reports/maturity?withinDays=30 ──────────────────────
+router.get('/reports/maturity', async (req, res) => {
+  try {
+    const withinDays = Math.min(365, Math.max(1, parseInt(req.query.withinDays, 10) || 30));
+    const format = String(req.query.format || 'json').toLowerCase();
+    const now = new Date();
+    const end = new Date(now.getTime() + withinDays * 86400000);
+
+    const { data: invs, error } = await supabase
+      .from('loan_invoices')
+      .select('loan_id, borrower_id, installment_index, amount_due, due_date, status, invoice_number')
+      .in('status', ['pending', 'overdue'])
+      .gte('due_date', now.toISOString())
+      .lte('due_date', end.toISOString())
+      .order('due_date', { ascending: true })
+      .limit(10000);
+    if (error) throw error;
+
+    const list = invs || [];
+    if (format === 'csv') {
+      const header = toCsvRow(['due_date', 'loan_id', 'borrower_id', 'installment_index', 'amount_due', 'status', 'invoice_number']);
+      const lines = [header];
+      for (const r of list) {
+        lines.push(
+          toCsvRow([
+            r.due_date,
+            r.loan_id,
+            r.borrower_id,
+            r.installment_index,
+            r.amount_due,
+            r.status,
+            r.invoice_number,
+          ]),
+        );
+      }
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="maturity-upcoming-installments.csv"');
+      return res.send(lines.join('\n'));
+    }
+
+    let amountSum = 0;
+    for (const r of list) amountSum += Number(r.amount_due) || 0;
+
+    return res.json({
+      success: true,
+      within_days: withinDays,
+      window_end: end.toISOString(),
+      installment_count: list.length,
+      amount_due_total: Math.round(amountSum * 100) / 100,
+      installments: list,
+    });
+  } catch (err) {
+    console.error('[accounting:maturity]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── GET /api/accounting/queues/unmatched-lipa ────────────────────────────────
 router.get('/queues/unmatched-lipa', async (req, res) => {
   try {
