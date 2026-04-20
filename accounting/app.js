@@ -56,6 +56,7 @@ function setView(name) {
     home: 'Home',
     customers: 'Customers',
     loans: 'Loans & invoices',
+    'cash-disburse': 'Cash disbursement',
     cash: 'Cash receipts (Lipa)',
     reports: 'Reports',
     queues: 'Queues',
@@ -66,6 +67,7 @@ function setView(name) {
 
 let selectedBorrowerId = null;
 let selectedLoanId = null;
+let pendingDisburseLoanId = null;
 
 async function loadCustomers() {
   const q = $('#customer-search').value.trim();
@@ -230,6 +232,40 @@ $('#form-outstanding').addEventListener('submit', async (e) => {
   }
 });
 
+async function loadPendingDisbursement() {
+  const data = await apiFetch('/loans/pending-disbursement');
+  const tb = $('#table-pending-disburse tbody');
+  tb.innerHTML = '';
+  for (const l of data.loans || []) {
+    const tr = document.createElement('tr');
+    const principal =
+      l.principal_amount != null ? Number(l.principal_amount).toLocaleString() : '—';
+    const who = l.borrower_full_name || l.borrower_id || '—';
+    tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(who)}</td><td>${escapeHtml(principal)}</td><td>${fmtDate(l.created_at)}</td><td><button type="button" class="btn btn-primary" data-confirm-disburse="1">Confirm</button></td>`;
+    tr.dataset.loanId = l.loan_id;
+    tb.appendChild(tr);
+  }
+}
+
+function openCashDisburseModal(loanId, labelLine) {
+  pendingDisburseLoanId = loanId;
+  const modal = $('#modal-cash-disburse');
+  const f = $('#form-cash-disburse');
+  f.actor.value = '';
+  f.notes.value = '';
+  $('#modal-cash-loan-line').textContent = labelLine || loanId;
+  modal.hidden = false;
+  modal.setAttribute('aria-hidden', 'false');
+  f.actor.focus();
+}
+
+function closeCashDisburseModal() {
+  pendingDisburseLoanId = null;
+  const modal = $('#modal-cash-disburse');
+  modal.hidden = true;
+  modal.setAttribute('aria-hidden', 'true');
+}
+
 async function loadLipa() {
   const claim = $('#lipa-claim').value;
   const search = $('#lipa-search').value.trim();
@@ -383,6 +419,7 @@ function wireNav() {
       if (v === 'customers') loadCustomers().catch((e) => toast(e.message, true));
       if (v === 'loans') loadLoans().catch((e) => toast(e.message, true));
       if (v === 'cash') loadLipa().catch((e) => toast(e.message, true));
+      if (v === 'cash-disburse') loadPendingDisbursement().catch((e) => toast(e.message, true));
       if (v === 'queues') {
         loadQueueLipa().catch((e) => toast(e.message, true));
         loadQueueRefs().catch((e) => toast(e.message, true));
@@ -392,6 +429,55 @@ function wireNav() {
     });
   });
 }
+
+$('#table-pending-disburse').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-confirm-disburse]');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  const loanId = tr?.dataset?.loanId;
+  if (!loanId) return;
+  const cells = tr.querySelectorAll('td');
+  const label =
+    cells.length >= 2
+      ? `${loanId} · ${cells[1].textContent.trim()}`
+      : loanId;
+  openCashDisburseModal(loanId, label);
+});
+
+$('#btn-pending-disburse-refresh').addEventListener('click', () => {
+  loadPendingDisbursement().catch((e) => toast(e.message, true));
+});
+
+$('#btn-cash-disburse-cancel').addEventListener('click', () => closeCashDisburseModal());
+
+$('#modal-cash-disburse').addEventListener('click', (e) => {
+  if (e.target.id === 'modal-cash-disburse') closeCashDisburseModal();
+});
+
+$('#form-cash-disburse').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!pendingDisburseLoanId) return;
+  const f = e.target;
+  const actor = f.actor.value.trim();
+  if (!actor) {
+    toast('Actor is required', true);
+    return;
+  }
+  try {
+    await apiFetch(`/loans/${encodeURIComponent(pendingDisburseLoanId)}/confirm-cash-disbursement`, {
+      method: 'POST',
+      body: JSON.stringify({
+        actor,
+        notes: f.notes.value.trim() || undefined,
+      }),
+    });
+    toast('Cash disbursement confirmed');
+    closeCashDisburseModal();
+    await loadPendingDisbursement();
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
 
 $('#btn-save-key').addEventListener('click', () => {
   setKey($('#api-key').value.trim());

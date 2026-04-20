@@ -67,7 +67,11 @@ CREATE TABLE IF NOT EXISTS loans (
   installment_weeks          INTEGER     NOT NULL DEFAULT 5,
   total_repayment_amount     NUMERIC,
   weekly_installment_amount  NUMERIC,
-  loan_schedule_start        TIMESTAMPTZ
+  loan_schedule_start        TIMESTAMPTZ,
+
+  cash_disbursement_confirmed_at TIMESTAMPTZ,
+  cash_disbursement_confirmed_by TEXT,
+  cash_disbursement_notes        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_loans_next_due_date ON loans (next_due_date);

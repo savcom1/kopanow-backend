@@ -47,6 +47,27 @@ function toCsvRow(cols) {
   return cols.map(csvEscape).join(',');
 }
 
+/** When false (default), portfolio reports only include cashier-confirmed loans. */
+function includeIncompleteLoans(req) {
+  const v = req.query.include_incomplete;
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+async function fetchConfirmedLoanIdsSet() {
+  const { data, error } = await supabase
+    .from('loans')
+    .select('loan_id')
+    .not('cash_disbursement_confirmed_at', 'is', null)
+    .limit(50000);
+  if (error) throw error;
+  return new Set((data || []).map((r) => r.loan_id));
+}
+
+// ── Borrower app: loan application (no auth — same as /api/loan/* when server mounts it) ──
+// Mounted here so Render deployments that only wire /api/accounting still accept registrations.
+const loanRouter = require('./loan');
+router.use('/loan', loanRouter);
+
 // ── GET /api/accounting/health (no auth — load balancers) ───────────────────
 router.get('/health', (req, res) => {
   res.json({ ok: true, module: 'accounting' });
@@ -232,6 +253,100 @@ router.get('/loans', async (req, res) => {
   } catch (err) {
     console.error('[accounting:loans]', err.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/accounting/loans/pending-disbursement (before :loanId route) ───
+router.get('/loans/pending-disbursement', async (req, res) => {
+  try {
+    const { data: loans, error } = await supabase
+      .from('loans')
+      .select('*')
+      .is('cash_disbursement_confirmed_at', null)
+      .is('repaid_at', null)
+      .gt('outstanding_amount', 0)
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+
+    const borrowerIds = [...new Set((loans || []).map((l) => l.borrower_id).filter(Boolean))];
+    let nameByBorrower = {};
+    if (borrowerIds.length) {
+      const { data: regs } = await supabase
+        .from('registrations')
+        .select('borrower_id, full_name, phone')
+        .in('borrower_id', borrowerIds);
+      nameByBorrower = Object.fromEntries((regs || []).map((r) => [r.borrower_id, r]));
+    }
+
+    return res.json({
+      success: true,
+      loans: (loans || []).map((l) => ({
+        ...l,
+        borrower_full_name: nameByBorrower[l.borrower_id]?.full_name || null,
+        borrower_phone: nameByBorrower[l.borrower_id]?.phone || null,
+      })),
+      count: (loans || []).length,
+    });
+  } catch (err) {
+    console.error('[accounting:pending-disbursement]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ── POST /api/accounting/loans/:loanId/confirm-cash-disbursement ─────────────
+router.post('/loans/:loanId/confirm-cash-disbursement', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const actor = req.body?.actor != null ? String(req.body.actor).trim() : '';
+    const notes = req.body?.notes != null ? String(req.body.notes).trim() : '';
+    if (!actor) {
+      return res.status(400).json({ success: false, error: 'actor is required' });
+    }
+
+    const { data: before, error: bErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (bErr) throw bErr;
+    if (!before) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    if (before.cash_disbursement_confirmed_at) {
+      return res.json({ success: true, loan: before, idempotent: true });
+    }
+
+    const ts = new Date().toISOString();
+    const patch = {
+      cash_disbursement_confirmed_at: ts,
+      cash_disbursement_confirmed_by: actor.slice(0, 200),
+      cash_disbursement_notes: notes || null,
+      updated_at: ts,
+    };
+    if (!before.disbursed_at) patch.disbursed_at = ts;
+
+    const { data: after, error: uErr } = await supabase
+      .from('loans')
+      .update(patch)
+      .eq('loan_id', loanId)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan',
+      entity_id: loanId,
+      action: 'cash_disbursement_confirm',
+      before,
+      after,
+      reason: notes || 'Cash disbursement confirmed (principal sent to borrower)',
+    });
+
+    return res.json({ success: true, loan: after });
+  } catch (err) {
+    console.error('[accounting:confirm-disbursement]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
   }
 });
 
@@ -448,10 +563,19 @@ router.get('/reports/collections', async (req, res) => {
     let totalAmount = 0;
     let claimedCount = 0;
     let unclaimedCount = 0;
+    let lipaOnCompleteLoans = 0;
+    let confirmedSet = new Set();
+    try {
+      confirmedSet = await fetchConfirmedLoanIdsSet();
+    } catch (_) {
+      /* columns may not exist before migration */
+    }
     for (const r of list) {
       totalAmount += Number(r.amount) || 0;
       if (r.claimed_borrower_id) claimedCount++;
       else unclaimedCount++;
+      const lid = r.claimed_loan_id != null ? String(r.claimed_loan_id) : '';
+      if (lid && confirmedSet.has(lid)) lipaOnCompleteLoans += Number(r.amount) || 0;
     }
 
     const summary = {
@@ -460,6 +584,9 @@ router.get('/reports/collections', async (req, res) => {
       to,
       row_count: list.length,
       total_amount: Math.round(totalAmount * 100) / 100,
+      lipa_amount_on_complete_loans: Math.round(lipaOnCompleteLoans * 100) / 100,
+      note:
+        'total_amount is all ingested Lipa; lipa_amount_on_complete_loans sums rows whose claimed_loan_id has cashier confirmation (complete book).',
       claimed_rows: claimedCount,
       unclaimed_rows: unclaimedCount,
     };
@@ -491,7 +618,12 @@ router.get('/reports/collections', async (req, res) => {
       return res.send(lines.join('\n'));
     }
 
-    return res.json({ success: true, summary, rows: list });
+    return res.json({
+      success: true,
+      summary,
+      rows: list,
+      definition: { complete_loans_only_metric: 'lipa_amount_on_complete_loans' },
+    });
   } catch (err) {
     console.error('[accounting:collections]', err.message);
     return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
@@ -502,11 +634,18 @@ router.get('/reports/collections', async (req, res) => {
 router.get('/reports/aging', async (req, res) => {
   try {
     const format = String(req.query.format || 'json').toLowerCase();
+    const incAll = includeIncompleteLoans(req);
     const { data: invoices, error } = await supabase
       .from('loan_invoices')
       .select('id, loan_id, borrower_id, invoice_number, amount_due, due_date, status')
       .in('status', ['pending', 'overdue']);
     if (error) throw error;
+
+    let invList = invoices || [];
+    if (!incAll) {
+      const confirmedSet = await fetchConfirmedLoanIdsSet();
+      invList = invList.filter((inv) => confirmedSet.has(inv.loan_id));
+    }
 
     const now = Date.now();
     const dayMs = 86400000;
@@ -518,7 +657,7 @@ router.get('/reports/aging', async (req, res) => {
       days_90_plus: { label: '90+ days past due', amount: 0, count: 0 },
     };
 
-    for (const inv of invoices || []) {
+    for (const inv of invList) {
       const due = new Date(inv.due_date).getTime();
       const amt = Number(inv.amount_due) || 0;
       if (due > now) {
@@ -558,6 +697,10 @@ router.get('/reports/aging', async (req, res) => {
     return res.json({
       success: true,
       generated_at: new Date().toISOString(),
+      definition: {
+        complete_loans_only: !incAll,
+        include_incomplete: incAll,
+      },
       buckets,
       total_receivable: Math.round(totalReceivable * 100) / 100,
     });
@@ -575,6 +718,7 @@ router.get('/reports/aging', async (req, res) => {
 // ── GET /api/accounting/reports/par?asOf=ISO ───────────────────────────────
 router.get('/reports/par', async (req, res) => {
   try {
+    const incAll = includeIncompleteLoans(req);
     const asOfRaw = req.query.asOf != null ? String(req.query.asOf).trim() : '';
     const asOf = asOfRaw ? new Date(asOfRaw) : new Date();
     if (Number.isNaN(asOf.getTime())) {
@@ -583,10 +727,14 @@ router.get('/reports/par', async (req, res) => {
     const asOfMs = asOf.getTime();
     const dayMs = 86400000;
 
-    const { data: loans, error: le } = await supabase
+    let loanQuery = supabase
       .from('loans')
       .select('loan_id, borrower_id, outstanding_amount, device_status')
       .gt('outstanding_amount', 0);
+    if (!incAll) {
+      loanQuery = loanQuery.not('cash_disbursement_confirmed_at', 'is', null);
+    }
+    const { data: loans, error: le } = await loanQuery;
     if (le) throw le;
 
     const { data: invs, error: ie } = await supabase
@@ -595,9 +743,11 @@ router.get('/reports/par', async (req, res) => {
       .in('status', ['pending', 'overdue']);
     if (ie) throw ie;
 
+    const loanIdSet = new Set((loans || []).map((l) => l.loan_id));
     /** @type {Map<string, number>} max calendar days past due for any unpaid installment */
     const loanMaxDaysPast = new Map();
     for (const inv of invs || []) {
+      if (!incAll && !loanIdSet.has(inv.loan_id)) continue;
       const due = new Date(inv.due_date).getTime();
       if (due >= asOfMs) continue;
       const daysPast = Math.floor((asOfMs - due) / dayMs);
@@ -630,8 +780,12 @@ router.get('/reports/par', async (req, res) => {
       success: true,
       as_of: asOf.toISOString(),
       definition: {
+        complete_loans_only: !incAll,
+        include_incomplete: incAll,
         denominator:
-          'Sum of loans.outstanding_amount for all loans with outstanding_amount > 0.',
+          incAll
+            ? 'Sum of loans.outstanding_amount for all loans with outstanding_amount > 0.'
+            : 'Same, but only loans with cash_disbursement_confirmed_at set (cashier sent principal).',
         numerator:
           'For each such loan, max days past due = longest delay among pending/overdue installments with due_date < asOf. If max >= N, add full loan outstanding to PARn balance.',
         par_pct: 'PARn balance / denominator * 100',
@@ -658,12 +812,15 @@ router.get('/reports/par', async (req, res) => {
 // ── GET /api/accounting/reports/expected-vs-actual ─────────────────────────
 router.get('/reports/expected-vs-actual', async (req, res) => {
   try {
+    const incAll = includeIncompleteLoans(req);
     const from = req.query.from ? new Date(req.query.from).toISOString() : null;
     const to = req.query.to ? new Date(req.query.to).toISOString() : null;
     if (!from || !to || Number.isNaN(new Date(from).getTime()) || Number.isNaN(new Date(to).getTime())) {
       return res.status(400).json({ success: false, error: 'from and to (ISO dates) are required' });
     }
     const format = String(req.query.format || 'json').toLowerCase();
+
+    const confirmedSet = incAll ? null : await fetchConfirmedLoanIdsSet();
 
     const { data: invs, error: ie } = await supabase
       .from('loan_invoices')
@@ -676,6 +833,7 @@ router.get('/reports/expected-vs-actual', async (req, res) => {
     let expectedTotal = 0;
     const expectedByLoan = new Map();
     for (const inv of invs || []) {
+      if (!incAll && !confirmedSet.has(inv.loan_id)) continue;
       const a = Number(inv.amount_due) || 0;
       expectedTotal += a;
       const lid = inv.loan_id;
@@ -693,9 +851,10 @@ router.get('/reports/expected-vs-actual', async (req, res) => {
     let actualTotal = 0;
     const actualByLoan = new Map();
     for (const row of lipaRows || []) {
+      const lid = row.claimed_loan_id;
+      if (!incAll && lid && !confirmedSet.has(lid)) continue;
       const a = Number(row.amount) || 0;
       actualTotal += a;
-      const lid = row.claimed_loan_id;
       if (lid) {
         actualByLoan.set(lid, (actualByLoan.get(lid) || 0) + a);
       }
@@ -716,7 +875,8 @@ router.get('/reports/expected-vs-actual', async (req, res) => {
     perLoan.sort((a, b) => Math.abs(b.shortfall) - Math.abs(a.shortfall));
 
     const summary = {
-      basis_expected: 'loan_invoices.due_date in [from,to] (all installments scheduled in period)',
+      complete_loans_only: !incAll,
+      basis_expected: 'loan_invoices.due_date in [from,to] (installments scheduled in period)',
       basis_actual: 'lipa_transactions.ingested_at in [from,to]; amounts summed by claimed_loan_id',
       from,
       to,
@@ -742,6 +902,7 @@ router.get('/reports/expected-vs-actual', async (req, res) => {
       success: true,
       summary,
       per_loan: perLoan,
+      definition: { complete_loans_only: !incAll, include_incomplete: incAll },
     });
   } catch (err) {
     console.error('[accounting:expected-vs-actual]', err.message);
@@ -810,6 +971,7 @@ router.get('/reports/disbursements', async (req, res) => {
 // ── GET /api/accounting/reports/maturity?withinDays=30 ──────────────────────
 router.get('/reports/maturity', async (req, res) => {
   try {
+    const incAll = includeIncompleteLoans(req);
     const withinDays = Math.min(365, Math.max(1, parseInt(req.query.withinDays, 10) || 30));
     const format = String(req.query.format || 'json').toLowerCase();
     const now = new Date();
@@ -825,7 +987,11 @@ router.get('/reports/maturity', async (req, res) => {
       .limit(10000);
     if (error) throw error;
 
-    const list = invs || [];
+    let list = invs || [];
+    if (!incAll) {
+      const confirmedSet = await fetchConfirmedLoanIdsSet();
+      list = list.filter((inv) => confirmedSet.has(inv.loan_id));
+    }
     if (format === 'csv') {
       const header = toCsvRow(['due_date', 'loan_id', 'borrower_id', 'installment_index', 'amount_due', 'status', 'invoice_number']);
       const lines = [header];
@@ -852,6 +1018,7 @@ router.get('/reports/maturity', async (req, res) => {
 
     return res.json({
       success: true,
+      definition: { complete_loans_only: !incAll, include_incomplete: incAll },
       within_days: withinDays,
       window_end: end.toISOString(),
       installment_count: list.length,

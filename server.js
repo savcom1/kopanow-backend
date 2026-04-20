@@ -1,10 +1,7 @@
 'use strict';
 
 /**
- * Local / single-node entry: mounts Admin (ops) and Accounting APIs + static UIs.
- * Deployments that only register route modules should also:
- *   app.use('/api/admin', require('./routes/admin'));
- *   app.use('/api/accounting', require('./routes/accounting'));
+ * Kopanow API entry: Android app + admin/accounting UIs.
  */
 require('dotenv').config();
 
@@ -13,12 +10,28 @@ const express = require('express');
 
 const adminRouter = require('./routes/admin');
 const accountingRouter = require('./routes/accounting');
+const loanRouter = require('./routes/loan');
+const deviceRouter = require('./routes/device');
+const paymentRefRouter = require('./routes/payment-reference');
+const mpesaRouter = require('./routes/mpesa');
+const pinRouter = require('./routes/pin');
+const lipaIngestRouter = require('./routes/lipa-ingest');
+const notifyRouter = require('./routes/notify');
+const provisionRouter = require('./routes/provision');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
 app.use('/api/admin', adminRouter);
 app.use('/api/accounting', accountingRouter);
+app.use('/api/loan', loanRouter);
+app.use('/api/device', deviceRouter);
+app.use('/api/payment', paymentRefRouter);
+app.use('/api/mpesa', mpesaRouter);
+app.use('/api/pin', pinRouter);
+app.use('/api/lipa', lipaIngestRouter);
+app.use('/api/notify', notifyRouter);
+app.use('/api/provision', provisionRouter);
 
 const adminStatic = path.join(__dirname, 'admin');
 const accountingStatic = path.join(__dirname, 'accounting');
@@ -35,7 +48,7 @@ app.get('/', (req, res) => {
     <li><a href="/admin/">Admin (operations)</a> — devices, tamper, lipa ops</li>
     <li><a href="/accounting/">Accounting</a> — borrowers, loans, Lipa cash-in, reports</li>
   </ul>
-  <p>API: <code>/api/admin/*</code>, <code>/api/accounting/*</code></p>
+  <p>API: <code>/api/admin/*</code>, <code>/api/accounting/*</code>, <code>/api/loan/*</code>, <code>/api/device/*</code>, …</p>
 </body></html>`);
 });
 

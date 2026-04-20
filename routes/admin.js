@@ -203,14 +203,49 @@ router.get('/tamper-logs', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/loans
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/disbursement-summary — pending cashier confirmation count
+router.get('/disbursement-summary', async (req, res) => {
+  try {
+    const startUtc = new Date();
+    startUtc.setUTCHours(0, 0, 0, 0);
+    const startIso = startUtc.toISOString();
+
+    const { count: pending, error: e1 } = await supabase
+      .from('loans')
+      .select('*', { count: 'exact', head: true })
+      .is('cash_disbursement_confirmed_at', null)
+      .is('repaid_at', null)
+      .gt('outstanding_amount', 0);
+    if (e1) throw e1;
+
+    const { count: confirmedToday, error: e2 } = await supabase
+      .from('loans')
+      .select('*', { count: 'exact', head: true })
+      .gte('cash_disbursement_confirmed_at', startIso);
+    if (e2) throw e2;
+
+    return res.json({
+      success: true,
+      pending_cash_disbursement: pending || 0,
+      confirmed_today_count: confirmedToday || 0,
+    });
+  } catch (err) {
+    console.error('[admin:disbursement-summary]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 router.get('/loans', async (req, res) => {
   try {
-    const { device_status, page = 1, limit = 50, search } = req.query;
+    const { device_status, page = 1, limit = 50, search, disbursement } = req.query;
     const from = (parseInt(page) - 1) * parseInt(limit);
     const to   = from + parseInt(limit) - 1;
 
     let query = supabase.from('loans').select('*', { count: 'exact' });
     if (device_status && device_status !== 'all') query = query.eq('device_status', device_status);
+    const disb = disbursement != null ? String(disbursement).toLowerCase() : 'all';
+    if (disb === 'pending') query = query.is('cash_disbursement_confirmed_at', null);
+    else if (disb === 'confirmed') query = query.not('cash_disbursement_confirmed_at', 'is', null);
 
     const qRaw = search != null ? String(search).trim() : '';
     if (qRaw) {

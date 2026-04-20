@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.49.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
-    "firebase-admin": "^13.8.0"
+    "firebase-admin": "^13.8.0",
+    "node-cron": "^3.0.3"
   }
 }

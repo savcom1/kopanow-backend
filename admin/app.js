@@ -12,6 +12,7 @@ let refreshTimer      = null;
 let lipaClaimFilter   = 'all';
 let lipaPage          = 1;
 let pendingLipaConfirmId = null;
+let loanDisbursementFilter = 'all';
 
 const $  = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -243,6 +244,17 @@ async function loadDashboard() {
   $('#kpi-removed').textContent      = s.admin_removed ?? 0;
   $('#badge-locked').textContent     = s.locked       ?? 0;
 
+  const disb = await apiFetch(`${API}/disbursement-summary`);
+  if (disb.success) {
+    $('#kpi-disburse-pending').textContent = disb.pending_cash_disbursement ?? '—';
+    const sub = $('#kpi-disburse-sub');
+    if (sub) {
+      const n = disb.confirmed_today_count;
+      sub.textContent =
+        n != null && Number(n) > 0 ? `${n} confirmed today (UTC)` : '';
+    }
+  }
+
   const tbody = $('#dash-tbody');
   // Sort client-side: put devices with last_seen first (most recent), then newly
   // enrolled devices with null last_seen (sorted by updated_at desc)
@@ -363,10 +375,23 @@ async function loadTamperLog() {
     </div>`).join('');
 }
 
+function cashOutCellHtml(l) {
+  if (l.cash_disbursement_confirmed_at) {
+    const by = l.cash_disbursement_confirmed_by ? esc(l.cash_disbursement_confirmed_by) : '';
+    const title = by ? ` title="${by}"` : '';
+    return `<span${title}>Sent</span> <span class="text-muted" style="font-size:11px;white-space:nowrap">${fmtDate(l.cash_disbursement_confirmed_at)}</span>`;
+  }
+  return '<span style="color:var(--amber);font-weight:600">Pending</span>';
+}
+
 async function loadLoans() {
   const search = $('#search-input')?.value?.trim() || '';
+  const disbQs =
+    loanDisbursementFilter && loanDisbursementFilter !== 'all'
+      ? `&disbursement=${encodeURIComponent(loanDisbursementFilter)}`
+      : '';
   const data = await apiFetch(
-    `${API}/loans?limit=100&search=${encodeURIComponent(search)}`
+    `${API}/loans?limit=100&search=${encodeURIComponent(search)}${disbQs}`
   );
   if (!data.success) return;
   const tbody = $('#loans-tbody');
@@ -391,6 +416,7 @@ async function loadLoans() {
       <td>${fmtDate(l.next_due_date)}</td>
       <td>${l.days_overdue > 0 ? `<span style="color:var(--red)">${l.days_overdue}d</span>` : '<span style="color:var(--green)">OK</span>'}</td>
       <td style="font-size:12px">${formatInvoiceSummaryHtml(l.invoice_summary)}</td>
+      <td style="font-size:12px;white-space:nowrap">${cashOutCellHtml(l)}</td>
       <td>${statusBadge(l.device_status)}</td>
     </tr>`;
   }).join('');
@@ -1049,6 +1075,15 @@ document.addEventListener('DOMContentLoaded', () => {
       $$('#view-lipa-transactions .chip[data-lipa-claim]').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       loadLipaTransactions();
+    });
+  });
+
+  $$('#view-loans .chip[data-disbursement]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      loanDisbursementFilter = chip.dataset.disbursement;
+      $$('#view-loans .chip[data-disbursement]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      loadLoans();
     });
   });
 

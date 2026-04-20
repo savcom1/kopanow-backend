@@ -95,6 +95,11 @@
           <div class="kpi-label">Admin Removed</div>
           <div class="kpi-value" id="kpi-removed">—</div>
         </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Pending cash disbursement</div>
+          <div class="kpi-value" id="kpi-disburse-pending">—</div>
+          <div class="kpi-hint text-muted" id="kpi-disburse-sub" style="font-size:11px;margin-top:4px"></div>
+        </div>
       </div>
 
       <div class="section-title">Recently Seen Devices</div>
@@ -151,13 +156,18 @@
 
     <!-- ══════════ VIEW: LOANS ══════════ -->
     <section class="view" id="view-loans">
+      <div class="filter-row" style="margin-bottom:12px">
+        <button class="chip active" data-disbursement="all" type="button">All loans</button>
+        <button class="chip" data-disbursement="pending" type="button">Incomplete / pending cash-out</button>
+        <button class="chip" data-disbursement="confirmed" type="button">Cash sent</button>
+      </div>
       <div class="table-wrap">
         <table class="data-table" id="loans-table">
           <thead>
             <tr>
               <th>Loan ID</th><th>Borrower</th><th>Principal</th>
               <th>Total / Weekly</th><th>Outstanding</th><th>Next Due</th>
-              <th>Overdue</th><th>Invoices</th><th>Device Status</th>
+              <th>Overdue</th><th>Invoices</th><th>Cash out</th><th>Device Status</th>
             </tr>
           </thead>
           <tbody id="loans-tbody"></tbody>

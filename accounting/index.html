@@ -20,6 +20,7 @@
       <button type="button" class="nav-item active" data-view="home">Home</button>
       <button type="button" class="nav-item" data-view="customers">Customers</button>
       <button type="button" class="nav-item" data-view="loans">Loans</button>
+      <button type="button" class="nav-item" data-view="cash-disburse">Cash disbursement</button>
       <button type="button" class="nav-item" data-view="cash">Cash receipts (Lipa)</button>
       <button type="button" class="nav-item" data-view="reports">Reports</button>
       <button type="button" class="nav-item" data-view="queues">Queues</button>
@@ -113,6 +114,27 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-cash-disburse">
+      <div class="toolbar">
+        <p class="muted" style="flex:1;margin:0">Loans waiting for cashier confirmation that principal was sent to the borrower. Confirmed loans count toward portfolio reporting (PAR, aging, etc.).</p>
+        <button type="button" class="btn btn-secondary" id="btn-pending-disburse-refresh">Refresh</button>
+      </div>
+      <div class="table-wrap scroll">
+        <table class="data-table" id="table-pending-disburse">
+          <thead>
+            <tr>
+              <th>Loan ID</th>
+              <th>Borrower</th>
+              <th>Principal</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </section>
 
@@ -218,6 +240,21 @@
         </table>
       </div>
     </section>
+
+    <div id="modal-cash-disburse" class="modal-backdrop" hidden aria-hidden="true">
+      <div class="modal-panel" role="dialog" aria-labelledby="modal-cash-title">
+        <h3 id="modal-cash-title">Confirm cash disbursement</h3>
+        <p class="muted" id="modal-cash-loan-line"></p>
+        <form id="form-cash-disburse">
+          <label class="full">Actor (required) <input name="actor" type="text" required placeholder="Staff id or name" autocomplete="off" /></label>
+          <label class="full">Notes (optional) <input name="notes" type="text" placeholder="Channel, M-Pesa ref…" autocomplete="off" /></label>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="btn-cash-disburse-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Confirm sent</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
   </main>
