@@ -462,7 +462,8 @@ object KopanowApi {
      * Backend should create/return a loan reference (loan_id) if approved/created.
      */
     suspend fun requestLoan(request: LoanRequest): ApiResult<LoanRequestResponse> =
-        post("/loan/request", request, LoanRequestResponse::class.java)
+        // Use accounting prefix: production often exposes /api/accounting/* even when /api/loan is missing from server.js
+        post("/accounting/loan/request", request, LoanRequestResponse::class.java)
 
     /**
      * Sends snake_case JSON keys explicitly. Gson often serializes Kotlin `data class` properties
@@ -481,7 +482,7 @@ object KopanowApi {
             put("android_device_id", body.androidDeviceId)
             put("app_version", body.appVersion)
         }
-        return post("/loan/contract-acceptance", payload, ContractAcceptanceResponse::class.java)
+        return post("/accounting/loan/contract-acceptance", payload, ContractAcceptanceResponse::class.java)
     }
 
     suspend fun pollPaymentStatus(
