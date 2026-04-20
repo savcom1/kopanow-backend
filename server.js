@@ -7,6 +7,45 @@ require('dotenv').config();
 
 const path = require('path');
 const express = require('express');
+const firebaseAdmin = require('firebase-admin');
+
+/**
+ * FCM / device commands require Firebase Admin. Set one of:
+ * - FIREBASE_SERVICE_ACCOUNT_JSON — full JSON object as a string (recommended on Render)
+ * - GOOGLE_APPLICATION_CREDENTIALS — path to the service account .json file (local dev)
+ */
+function initFirebaseAdmin() {
+  if (firebaseAdmin.apps.length) return;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (raw && String(raw).trim()) {
+    try {
+      const cred = JSON.parse(raw);
+      firebaseAdmin.initializeApp({
+        credential: firebaseAdmin.credential.cert(cred),
+      });
+      console.log('[firebase] Firebase Admin initialised (FIREBASE_SERVICE_ACCOUNT_JSON)');
+      return;
+    } catch (e) {
+      console.error('[firebase] FIREBASE_SERVICE_ACCOUNT_JSON is invalid JSON:', e.message);
+    }
+  }
+  const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (gac && String(gac).trim()) {
+    try {
+      firebaseAdmin.initializeApp();
+      console.log('[firebase] Firebase Admin initialised (GOOGLE_APPLICATION_CREDENTIALS)');
+      return;
+    } catch (e) {
+      console.error('[firebase] GOOGLE_APPLICATION_CREDENTIALS init failed:', e.message);
+    }
+  }
+  console.warn(
+    '[firebase] Not configured — lock/unlock and other FCM device commands will fail. ' +
+      'Set FIREBASE_SERVICE_ACCOUNT_JSON in Render (paste service account JSON) or GOOGLE_APPLICATION_CREDENTIALS locally.',
+  );
+}
+
+initFirebaseAdmin();
 
 const adminRouter = require('./routes/admin');
 const accountingRouter = require('./routes/accounting');
