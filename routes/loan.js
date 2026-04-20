@@ -8,8 +8,6 @@ const {
   createInvoicesForLoan,
 } = require('../helpers/loanInvoices');
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 function generateLoanId() {
   // Human-readable-ish unique loan id
   return `LN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -166,8 +164,6 @@ router.post('/request', async (req, res) => {
     if (devUpsertErr) throw devUpsertErr;
 
     const scheduleStart = new Date(now);
-    const firstRepayment = new Date(scheduleStart.getTime() + WEEK_MS);
-    const lastRepayment = new Date(scheduleStart.getTime() + schedule.weeks * WEEK_MS);
     const contractNumber = `KN-${String(loan_id).replace(/[^A-Za-z0-9]/g, '').slice(-10)}-${Date.now().toString(36).toUpperCase()}`;
 
     return res.json({
@@ -180,8 +176,6 @@ router.post('/request', async (req, res) => {
       weekly_installment_tzs: Math.round(schedule.weekly),
       num_weeks: schedule.weeks,
       loan_start_date: scheduleStart.toISOString(),
-      first_repayment_date: firstRepayment.toISOString(),
-      last_repayment_date: lastRepayment.toISOString(),
     });
   } catch (err) {
     const msg = err?.message || 'Internal server error';
@@ -190,7 +184,14 @@ router.post('/request', async (req, res) => {
   }
 });
 
-// POST /api/loan/contract-acceptance — store electronic contract (Android ContractActivity)
+/** Empty string → null so Postgres TIMESTAMPTZ / TEXT columns never get "". */
+function trimOrNull(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
+// POST /api/loan/contract-acceptance — minimal row (ids + time + device); contract text lives in the app only.
 router.post('/contract-acceptance', async (req, res) => {
   try {
     const b = req.body || {};
@@ -205,19 +206,14 @@ router.post('/contract-acceptance', async (req, res) => {
       contract_number,
       loan_id,
       borrower_id,
-      borrower_name: b.borrower_name ?? null,
-      borrower_phone: b.borrower_phone ?? null,
-      borrower_region: b.borrower_region ?? null,
-      loan_amount_tzs: b.loan_amount_tzs != null ? parseInt(b.loan_amount_tzs, 10) : null,
-      total_repayment_tzs: b.total_repayment_tzs != null ? parseInt(b.total_repayment_tzs, 10) : null,
-      weekly_installment_tzs: b.weekly_installment_tzs != null ? parseInt(b.weekly_installment_tzs, 10) : null,
-      num_weeks: b.num_weeks != null ? parseInt(b.num_weeks, 10) : null,
-      loan_start_date: b.loan_start_date ?? null,
-      first_repayment_date: b.first_repayment_date ?? null,
-      last_repayment_date: b.last_repayment_date ?? null,
-      android_device_id: b.android_device_id ?? null,
-      app_version: b.app_version ?? null,
-      accepted_at: b.accepted_at || new Date().toISOString(),
+      borrower_name: trimOrNull(b.borrower_name),
+      borrower_phone: trimOrNull(b.borrower_phone),
+      borrower_region: trimOrNull(b.borrower_region),
+      first_repayment_date: trimOrNull(b.first_repayment_date),
+      last_repayment_date: trimOrNull(b.last_repayment_date),
+      accepted_at: new Date().toISOString(),
+      android_device_id: trimOrNull(b.android_device_id) || 'unknown',
+      app_version: trimOrNull(b.app_version) || 'unknown',
     };
 
     const { error } = await supabase.from('contract_acceptances').insert(row);

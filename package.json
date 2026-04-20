@@ -1,23 +1,19 @@
 {
   "name": "kopanow-backend",
+  "private": true,
   "version": "1.0.0",
-  "description": "Kopanow MDM backend — device lock enforcement + M-Pesa payments",
+  "description": "Kopanow API — loan, admin, accounting, lipa routes",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.4",
-    "africastalking": "^0.7.9",
-    "dotenv": "^17.3.1",
-    "express": "^5.2.1",
-    "firebase-admin": "^13.7.0",
-    "node-cron": "^4.2.1"
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
   }
 }

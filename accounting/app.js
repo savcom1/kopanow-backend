@@ -1,0 +1,373 @@
+'use strict';
+
+const API = '/api/accounting';
+const KEY_STORAGE = 'kopanow_accounting_key';
+
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+function getKey() {
+  return sessionStorage.getItem(KEY_STORAGE) || '';
+}
+
+function setKey(k) {
+  if (k) sessionStorage.setItem(KEY_STORAGE, k);
+  else sessionStorage.removeItem(KEY_STORAGE);
+}
+
+function headers(json = true) {
+  const h = {};
+  if (json) h['Content-Type'] = 'application/json';
+  const k = getKey();
+  if (k) h['x-accounting-key'] = k;
+  return h;
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, { ...opts, headers: { ...headers(), ...opts.headers } });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+  if (!res.ok) {
+    throw new Error(data.error || data.message || res.statusText || 'Request failed');
+  }
+  return data;
+}
+
+function toast(msg, isError) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.toggle('error', !!isError);
+  el.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.hidden = true; }, 4200);
+}
+
+function setView(name) {
+  $$('.view').forEach((v) => v.classList.remove('active'));
+  $$('.nav-item').forEach((n) => n.classList.remove('active'));
+  $(`#view-${name}`)?.classList.add('active');
+  $(`[data-view="${name}"]`)?.classList.add('active');
+  const titles = {
+    home: 'Home',
+    customers: 'Customers',
+    loans: 'Loans & invoices',
+    cash: 'Cash receipts (Lipa)',
+    reports: 'Reports',
+    queues: 'Queues',
+    audit: 'Audit log',
+  };
+  $('#page-title').textContent = titles[name] || name;
+}
+
+let selectedBorrowerId = null;
+let selectedLoanId = null;
+
+async function loadCustomers() {
+  const q = $('#customer-search').value.trim();
+  const qs = new URLSearchParams({ page: 1, limit: 100 });
+  if (q) qs.set('search', q);
+  const data = await apiFetch(`/borrowers?${qs}`);
+  const tb = $('#table-customers tbody');
+  tb.innerHTML = '';
+  for (const b of data.borrowers || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(b.borrower_id)}</td><td>${escapeHtml(b.full_name)}</td><td>${escapeHtml(b.phone)}</td><td>${escapeHtml(b.region)}</td>`;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', () => openCustomer(b.borrower_id));
+    tb.appendChild(tr);
+  }
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function openCustomer(borrowerId) {
+  selectedBorrowerId = borrowerId;
+  const data = await apiFetch(`/borrowers/${encodeURIComponent(borrowerId)}`);
+  const r = data.registration;
+  $('#customer-detail').hidden = false;
+  $('#customer-detail-title').textContent = r.full_name || borrowerId;
+  const f = $('#form-edit-customer');
+  f.full_name.value = r.full_name || '';
+  f.phone.value = r.phone || '';
+  f.national_id.value = r.national_id || '';
+  f.region.value = r.region || '';
+  f.address.value = r.address || '';
+  f.reason.value = '';
+  f.actor.value = '';
+}
+
+$('#form-edit-customer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedBorrowerId) return;
+  const f = e.target;
+  const body = {
+    full_name: f.full_name.value.trim(),
+    phone: f.phone.value.trim(),
+    national_id: f.national_id.value.trim(),
+    region: f.region.value.trim(),
+    address: f.address.value.trim(),
+    reason: f.reason.value.trim(),
+    actor: f.actor.value.trim() || 'accounting',
+  };
+  try {
+    await apiFetch(`/borrowers/${encodeURIComponent(selectedBorrowerId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    toast('Customer updated');
+    loadCustomers();
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+async function loadLoans() {
+  const q = $('#loan-search').value.trim();
+  const qs = new URLSearchParams({ page: 1, limit: 100 });
+  if (q) qs.set('search', q);
+  const data = await apiFetch(`/loans?${qs}`);
+  const tb = $('#table-loans tbody');
+  tb.innerHTML = '';
+  for (const l of data.loans || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(l.borrower_full_name || l.borrower_id)}</td><td>${escapeHtml(String(l.outstanding_amount))}</td><td>${fmtDate(l.next_due_date)}</td><td><button type="button" class="link">Open</button></td>`;
+    tr.querySelector('button').addEventListener('click', () => openLoan(l.loan_id));
+    tb.appendChild(tr);
+  }
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+async function openLoan(loanId) {
+  selectedLoanId = loanId;
+  const data = await apiFetch(`/loans/${encodeURIComponent(loanId)}`);
+  $('#loan-detail').hidden = false;
+  $('#loan-detail-title').textContent = loanId;
+  $('#loan-detail-meta').textContent = `Borrower: ${data.registration?.full_name || data.loan.borrower_id} · Outstanding: ${data.loan.outstanding_amount}`;
+  const fo = $('#form-outstanding');
+  fo.outstanding_amount.value = data.loan.outstanding_amount ?? '';
+  fo.reason.value = '';
+  fo.actor.value = '';
+
+  const tb = $('#table-invoices tbody');
+  tb.innerHTML = '';
+  for (const inv of data.invoices || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${inv.installment_index}</td><td>${fmtDate(inv.due_date)}</td><td>${inv.amount_due}</td><td>${escapeHtml(inv.status)}</td><td></td>`;
+    const td = tr.lastElementChild;
+    const sel = document.createElement('select');
+    ['pending', 'paid', 'overdue'].forEach((st) => {
+      const o = document.createElement('option');
+      o.value = st;
+      o.textContent = st;
+      if (st === inv.status) o.selected = true;
+      sel.appendChild(o);
+    });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary';
+    btn.textContent = 'Apply';
+    btn.addEventListener('click', async () => {
+      const reason = window.prompt('Reason for invoice status change (required):');
+      if (!reason || !reason.trim()) {
+        toast('Reason required', true);
+        return;
+      }
+      const actor = window.prompt('Actor (optional):', '') || 'accounting';
+      try {
+        await apiFetch(`/loans/${encodeURIComponent(loanId)}/invoices/${inv.id}/adjust`, {
+          method: 'POST',
+          body: JSON.stringify({ status: sel.value, reason: reason.trim(), actor }),
+        });
+        toast('Invoice updated');
+        openLoan(loanId);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+    td.appendChild(sel);
+    td.appendChild(btn);
+    tb.appendChild(tr);
+  }
+}
+
+$('#form-outstanding').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedLoanId) return;
+  const f = e.target;
+  try {
+    await apiFetch(`/loans/${encodeURIComponent(selectedLoanId)}/adjust-outstanding`, {
+      method: 'POST',
+      body: JSON.stringify({
+        outstanding_amount: Number(f.outstanding_amount.value),
+        reason: f.reason.value.trim(),
+        actor: f.actor.value.trim() || 'accounting',
+      }),
+    });
+    toast('Outstanding updated');
+    openLoan(selectedLoanId);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+async function loadLipa() {
+  const claim = $('#lipa-claim').value;
+  const search = $('#lipa-search').value.trim();
+  const qs = new URLSearchParams({ page: 1, limit: 80, claim });
+  if (search) qs.set('search', search);
+  const data = await apiFetch(`/cash-receipts/lipa?${qs}`);
+  const tb = $('#table-lipa tbody');
+  tb.innerHTML = '';
+  for (const t of data.transactions || []) {
+    const tr = document.createElement('tr');
+    const when = t.transaction_occurred_at || t.ingested_at;
+    tr.innerHTML = `<td>${fmtDate(when)}</td><td>${t.amount}</td><td>${escapeHtml(t.transaction_ref)}</td><td>${escapeHtml(t.payer_phone)}</td><td>${escapeHtml(t.claimed_loan_id || '—')}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function runCollectionsJson() {
+  const from = $('#rep-from').value;
+  const to = $('#rep-to').value;
+  if (!from || !to) {
+    toast('Pick from and to dates', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  const data = await apiFetch(`/reports/collections?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=json`);
+  $('#collections-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function downloadCsv(path) {
+  const h = headers(false);
+  const res = await fetch(`${API}${path}`, { headers: h });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || res.statusText);
+  }
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = path.includes('aging') ? 'ar-aging.csv' : 'collections-lipa.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function runAgingJson() {
+  const data = await apiFetch('/reports/aging?format=json');
+  $('#aging-out').textContent = JSON.stringify(data, null, 2);
+}
+
+async function loadQueueLipa() {
+  const data = await apiFetch('/queues/unmatched-lipa?page=1&limit=80');
+  const tb = $('#table-queue-lipa tbody');
+  tb.innerHTML = '';
+  for (const t of data.transactions || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtDate(t.ingested_at)}</td><td>${t.amount}</td><td>${escapeHtml(t.transaction_ref)}</td><td>${escapeHtml(t.payer_phone)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function loadQueueRefs() {
+  const data = await apiFetch('/queues/pending-refs?page=1&limit=80');
+  const tb = $('#table-queue-refs tbody');
+  tb.innerHTML = '';
+  for (const r of data.references || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtDate(r.submitted_at)}</td><td>${escapeHtml(r.mpesa_ref)}</td><td>${escapeHtml(r.loan_id)}</td><td>${escapeHtml(r.borrower_id)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function loadAudit() {
+  const data = await apiFetch('/audit-log?page=1&limit=100');
+  const tb = $('#table-audit tbody');
+  tb.innerHTML = '';
+  for (const e of data.entries || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtDate(e.created_at)}</td><td>${escapeHtml(e.actor)}</td><td>${escapeHtml(e.entity_type)} ${escapeHtml(e.entity_id)}</td><td>${escapeHtml(e.action)}</td><td>${escapeHtml(e.reason || '—')}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function wireNav() {
+  $$('.nav-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const v = btn.getAttribute('data-view');
+      setView(v);
+      if (v === 'customers') loadCustomers().catch((e) => toast(e.message, true));
+      if (v === 'loans') loadLoans().catch((e) => toast(e.message, true));
+      if (v === 'cash') loadLipa().catch((e) => toast(e.message, true));
+      if (v === 'queues') {
+        loadQueueLipa().catch((e) => toast(e.message, true));
+        loadQueueRefs().catch((e) => toast(e.message, true));
+      }
+      if (v === 'audit') loadAudit().catch((e) => toast(e.message, true));
+    });
+  });
+}
+
+$('#btn-save-key').addEventListener('click', () => {
+  setKey($('#api-key').value.trim());
+  toast('Key saved for this session');
+});
+
+$('#api-key').value = getKey();
+
+$('#btn-search-customers').addEventListener('click', () => loadCustomers().catch((e) => toast(e.message, true)));
+$('#btn-search-loans').addEventListener('click', () => loadLoans().catch((e) => toast(e.message, true)));
+$('#btn-lipa-refresh').addEventListener('click', () => loadLipa().catch((e) => toast(e.message, true)));
+
+$('#btn-collections-run').addEventListener('click', () => runCollectionsJson().catch((e) => toast(e.message, true)));
+$('#btn-collections-csv').addEventListener('click', () => {
+  const from = $('#rep-from').value;
+  const to = $('#rep-to').value;
+  if (!from || !to) {
+    toast('Pick from and to dates', true);
+    return;
+  }
+  const start = new Date(from + 'T00:00:00.000Z').toISOString();
+  const end = new Date(to + 'T23:59:59.999Z').toISOString();
+  const path = `/reports/collections?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&format=csv`;
+  downloadCsv(path).catch((e) => toast(e.message, true));
+});
+
+$('#btn-aging-run').addEventListener('click', () => runAgingJson().catch((e) => toast(e.message, true)));
+$('#btn-aging-csv').addEventListener('click', () => downloadCsv('/reports/aging?format=csv').catch((e) => toast(e.message, true)));
+
+$('#btn-queue-lipa').addEventListener('click', () => loadQueueLipa().catch((e) => toast(e.message, true)));
+$('#btn-queue-refs').addEventListener('click', () => loadQueueRefs().catch((e) => toast(e.message, true)));
+$('#btn-audit-refresh').addEventListener('click', () => loadAudit().catch((e) => toast(e.message, true)));
+
+wireNav();
+
+// Default date range: last 30 days
+(function initDates() {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 30);
+  $('#rep-to').value = to.toISOString().slice(0, 10);
+  $('#rep-from').value = from.toISOString().slice(0, 10);
+})();

@@ -299,3 +299,22 @@ CREATE TABLE IF NOT EXISTS notifications_log (
 CREATE INDEX IF NOT EXISTS idx_notif_log_borrower ON notifications_log (borrower_id, loan_id);
 CREATE INDEX IF NOT EXISTS idx_notif_log_event    ON notifications_log (event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_notif_log_status   ON notifications_log (status);
+
+
+-- ── Accounting audit (staff edits to registrations / loans / invoices) ──
+CREATE TABLE IF NOT EXISTS accounting_audit_log (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor        TEXT NOT NULL,
+  entity_type  TEXT NOT NULL,
+  entity_id    TEXT NOT NULL,
+  action       TEXT NOT NULL,
+  before_json  JSONB,
+  after_json   JSONB,
+  reason       TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounting_audit_entity
+  ON accounting_audit_log (entity_type, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_accounting_audit_created
+  ON accounting_audit_log (created_at DESC);
