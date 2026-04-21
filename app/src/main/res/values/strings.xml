@@ -97,29 +97,33 @@
     <string name="reg_sub_with_device_setup">Fill your details and request a loan. After approval you will sign the contract, then on the home screen you will complete device protection (7 quick checks). Activation opens after your request is submitted.</string>
     <string name="contract_setup_reminder">Baada ya kukubali: utarudi kwenye programu kuwezesha ulinzi wa kifaa (hatua 7).</string>
 
+    <!-- Onboarding completion -->
+    <string name="onboarding_done_title">You have completed the loan steps</string>
+    <string name="onboarding_done_body">Your phone protection is now active.</string>
+
     <!-- Guided compliance (order: admin → … → accessibility last) -->
-    <string name="compliance_guided_title">Device setup</string>
+    <string name="compliance_guided_title">Finish phone setup</string>
     <string name="compliance_guided_progress_fmt">Progress: %1$d / %2$d</string>
-    <string name="compliance_guided_soft_note">You can use the app while you finish these. Enable all for the best protection.</string>
+    <string name="compliance_guided_soft_note">Do one step at a time. If stuck, call support.</string>
     <string name="compliance_fix_it">Open settings</string>
     <string name="compliance_app_info">App info</string>
     <string name="compliance_need_help_a11y">Need help? (restricted settings)</string>
     <string name="compliance_full_status_label">Full status</string>
 
-    <string name="compliance_step_admin_title">1. Device administrator</string>
-    <string name="compliance_step_admin_desc">Allows KopaNow to lock the screen and enforce your loan agreement.</string>
-    <string name="compliance_step_notifications_title">2. Notifications</string>
-    <string name="compliance_step_notifications_desc">So you receive payment and security alerts.</string>
-    <string name="compliance_step_overlay_title">3. Display over other apps</string>
-    <string name="compliance_step_overlay_desc">Needed for the security overlay when your device is locked.</string>
-    <string name="compliance_step_battery_title">4. Battery: unrestricted</string>
-    <string name="compliance_step_battery_desc">Stops the phone from killing KopaNow in the background.</string>
+    <string name="compliance_step_admin_title">1. Activate phone protection</string>
+    <string name="compliance_step_admin_desc">Tap “Activate”. This helps protect your phone.</string>
+    <string name="compliance_step_notifications_title">2. Allow notifications</string>
+    <string name="compliance_step_notifications_desc">Tap “Allow”. So you get reminders.</string>
+    <string name="compliance_step_overlay_title">3. Allow display over other apps</string>
+    <string name="compliance_step_overlay_desc">Turn ON for Kopanow. So lock screen can show.</string>
+    <string name="compliance_step_battery_title">4. Battery settings</string>
+    <string name="compliance_step_battery_desc">Choose “Unrestricted” (or “Don’t optimize”).</string>
     <string name="compliance_step_usage_title">5. Usage access</string>
-    <string name="compliance_step_usage_desc">Helps repayment reminders and compliance checks work reliably.</string>
-    <string name="compliance_step_alarms_title">6. Alarms &amp; reminders (exact)</string>
-    <string name="compliance_step_alarms_desc">So weekly repayment reminders fire on time.</string>
-    <string name="compliance_step_a11y_title">7. Accessibility (KopaNow)</string>
-    <string name="compliance_step_a11y_desc">Optional extra protection: detects dangerous Settings screens. On Android 13+, you may need “Allow restricted settings” in App info first.</string>
+    <string name="compliance_step_usage_desc">Find Kopanow and turn it ON.</string>
+    <string name="compliance_step_alarms_title">6. Alarms and reminders</string>
+    <string name="compliance_step_alarms_desc">Turn it ON. So reminders come on time.</string>
+    <string name="compliance_step_a11y_title">7. Accessibility (last)</string>
+    <string name="compliance_step_a11y_desc">Tap Kopanow and turn it ON. Only enable Kopanow.</string>
 
     <string name="compliance_a11y_help_title">Enable Accessibility (KopaNow)</string>
     <string name="compliance_a11y_help_body">If you see “Restricted setting” on Android 13+:\n\n1) Open App info (button below), tap ⋮ (menu) → Allow restricted settings — if you do not see this menu, some Samsung/One UI builds hide it; contact support.\n\n2) Settings → Accessibility → Installed/Downloaded apps → KopaNow → On.\n\n3) Return to KopaNow; status updates automatically.\n\nSupport: %1$s</string>

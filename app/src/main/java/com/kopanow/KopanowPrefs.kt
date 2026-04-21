@@ -51,6 +51,7 @@ object KopanowPrefs {
     private const val KEY_LOAN_REQ_MONTHS  = "loan_req_months"
     private const val KEY_LOAN_REQ_PURPOSE = "loan_req_purpose"
     private const val KEY_LOAN_REQ_DONE    = "loan_req_done"
+    private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
 
     private var prefs: SharedPreferences? = null
 
@@ -144,6 +145,11 @@ object KopanowPrefs {
     var mdmTamperShieldArmed: Boolean
         get() = getPrefs().getBoolean(KEY_MDM_TAMPER_SHIELD_ARMED, false)
         set(value) = getPrefs().edit().putBoolean(KEY_MDM_TAMPER_SHIELD_ARMED, value).apply()
+
+    /** True after borrower finishes all required phone-protection steps (self-service onboarding complete). */
+    var onboardingCompleted: Boolean
+        get() = getPrefs().getBoolean(KEY_ONBOARDING_COMPLETED, false)
+        set(value) = getPrefs().edit().putBoolean(KEY_ONBOARDING_COMPLETED, value).apply()
 
     var isLocked: Boolean
         get() = getPrefs().getBoolean(KEY_IS_LOCKED, false)

@@ -87,9 +87,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvProtectionSub: TextView
     private lateinit var ivProtectionStatus: ImageView
     private lateinit var tvComplianceProgress: TextView
+    private lateinit var tvComplianceSoftNote: TextView
     private lateinit var llComplianceGuidedSteps: LinearLayout
     private lateinit var tvMdmChecklist: TextView
     private lateinit var btnContactSupport: MaterialButton
+    private lateinit var cardProtection: MaterialCardView
+    private lateinit var bannerOnboardingDone: View
 
     private lateinit var tilMainMpesaRef: TextInputLayout
     private lateinit var etMainMpesaRef: TextInputEditText
@@ -147,6 +150,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         bindViews()
 
+        // Hide checklist until activation completes (admin + backend registration → FCM token stored).
+        cardProtection.visibility = if (isActivationComplete()) View.VISIBLE else View.GONE
+
         val enrolled = DeviceSecurityManager.isAdminActive(this)
         updateProtectionStatusUI(enrolled)
         
@@ -172,6 +178,7 @@ class MainActivity : AppCompatActivity() {
     private fun bindViews() {
         cardEnrollment = findViewById(R.id.card_enrollment)
         cardDashboard = findViewById(R.id.card_dashboard)
+        cardProtection = findViewById(R.id.card_protection)
         tvWelcome = findViewById(R.id.tv_welcome)
         tvStatus = findViewById(R.id.tv_enrollment_status)
         btnEnroll = findViewById(R.id.btn_test_enroll)
@@ -186,9 +193,11 @@ class MainActivity : AppCompatActivity() {
         tvProtectionSub = findViewById(R.id.tv_protection_sub)
         ivProtectionStatus = findViewById(R.id.iv_protection_status)
         tvComplianceProgress = findViewById(R.id.tv_compliance_progress)
+        tvComplianceSoftNote = findViewById(R.id.tv_compliance_soft_note)
         llComplianceGuidedSteps = findViewById(R.id.ll_compliance_guided_steps)
         tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
         btnContactSupport = findViewById(R.id.btn_contact_support)
+        bannerOnboardingDone = findViewById(R.id.banner_onboarding_done)
 
         tilMainMpesaRef = findViewById(R.id.til_main_mpesa_ref)
         etMainMpesaRef = findViewById(R.id.et_main_mpesa_ref)
@@ -245,7 +254,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Activation is considered complete only after:
+     * - Device admin is active, AND
+     * - EnrollmentManager successfully registered the device with backend (arms tamper shield)
+     *   which implies an FCM token was fetched and stored server-side.
+     */
+    private fun isActivationComplete(): Boolean {
+        return DeviceSecurityManager.isAdminActive(this) && KopanowPrefs.mdmTamperShieldArmed
+    }
+
     private fun updateProtectionStatusUI(@Suppress("UNUSED_PARAMETER") active: Boolean) {
+        // Never show the requirements checklist before activation completes.
+        if (!isActivationComplete()) {
+            if (::cardProtection.isInitialized) cardProtection.visibility = View.GONE
+            return
+        }
+        if (::cardProtection.isInitialized) cardProtection.visibility = View.VISIBLE
         refreshMdmComplianceUi()
     }
 
@@ -263,10 +288,31 @@ class MainActivity : AppCompatActivity() {
         tvMdmChecklist.text = MdmComplianceCollector.formatChecklistLines(p)
 
         val adminOn = DeviceSecurityManager.isAdminActive(this)
+        val done = p.allRequiredOk && adminOn
+
+        // Completed loan steps state
+        if (::bannerOnboardingDone.isInitialized) {
+            bannerOnboardingDone.visibility = if (done) View.VISIBLE else View.GONE
+        }
+        if (done) {
+            // Optional: persist so we don't re-explain on every restart
+            KopanowPrefs.onboardingCompleted = true
+            // Keep UI simple once complete: hide the step list + raw checklist text
+            llComplianceGuidedSteps.visibility = View.GONE
+            tvMdmChecklist.visibility = View.GONE
+            tvComplianceProgress.visibility = View.GONE
+            if (::tvComplianceSoftNote.isInitialized) tvComplianceSoftNote.visibility = View.GONE
+        } else {
+            llComplianceGuidedSteps.visibility = View.VISIBLE
+            tvMdmChecklist.visibility = View.VISIBLE
+            tvComplianceProgress.visibility = View.VISIBLE
+            if (::tvComplianceSoftNote.isInitialized) tvComplianceSoftNote.visibility = View.VISIBLE
+        }
+
         when {
-            p.allRequiredOk && adminOn -> {
-                tvProtectionTitle.text = "All required protections ON"
-                tvProtectionSub.text = "${p.okCount}/${p.requiredCount} checks — Kopanow can enforce policy"
+            done -> {
+                tvProtectionTitle.text = "Completed"
+                tvProtectionSub.text = "You have completed the loan steps"
                 ivProtectionStatus.setImageResource(android.R.drawable.presence_online)
                 ImageViewCompat.setImageTintList(
                     ivProtectionStatus,
@@ -349,6 +395,7 @@ class MainActivity : AppCompatActivity() {
     private fun showEnrollmentPrompt() {
         cardEnrollment.visibility = View.VISIBLE
         cardDashboard.visibility = View.GONE
+        if (::cardProtection.isInitialized) cardProtection.visibility = View.GONE
 
         // Activation should only be available after a loan request is submitted.
         if (!KopanowPrefs.isLoanRequestSubmitted) {
@@ -636,7 +683,7 @@ class MainActivity : AppCompatActivity() {
             goToLockScreen()
         } else if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {
             updateProtectionStatusUI(DeviceSecurityManager.isAdminActive(this))
-            startCompliancePolling()
+            if (isActivationComplete()) startCompliancePolling() else stopCompliancePolling()
             fetchLoanDetails()
             checkInWithBackend() // Update "Online" status on dashboard
         }
@@ -683,6 +730,10 @@ class MainActivity : AppCompatActivity() {
             if (success) {
                 KopanowPrefs.isAdmin = true
                 updateProtectionStatusUI(true)
+                if (isActivationComplete()) {
+                    cardProtection.visibility = View.VISIBLE
+                    startCompliancePolling()
+                }
                 showDashboard()
                 fetchLoanDetails()
             }
