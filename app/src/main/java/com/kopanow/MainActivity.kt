@@ -93,6 +93,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnContactSupport: MaterialButton
     private lateinit var cardProtection: MaterialCardView
     private lateinit var bannerOnboardingDone: View
+    private lateinit var bannerA11yGrace: View
+
+    @Volatile
+    private var lastA11yEnabled: Boolean? = null
+
+    private var setupTimeoutDialogShown = false
 
     private lateinit var tilMainMpesaRef: TextInputLayout
     private lateinit var etMainMpesaRef: TextInputEditText
@@ -198,6 +204,7 @@ class MainActivity : AppCompatActivity() {
         tvMdmChecklist = findViewById(R.id.tv_mdm_checklist)
         btnContactSupport = findViewById(R.id.btn_contact_support)
         bannerOnboardingDone = findViewById(R.id.banner_onboarding_done)
+        bannerA11yGrace = findViewById(R.id.banner_a11y_grace)
 
         tilMainMpesaRef = findViewById(R.id.til_main_mpesa_ref)
         etMainMpesaRef = findViewById(R.id.et_main_mpesa_ref)
@@ -271,6 +278,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (::cardProtection.isInitialized) cardProtection.visibility = View.VISIBLE
+        if (!KopanowPrefs.onboardingCompleted &&
+            !KopanowPrefs.protectionSetupTimedOut
+        ) {
+            ProtectionSetupTimeoutScheduler.scheduleIfNeeded(this)
+        }
         refreshMdmComplianceUi()
     }
 
@@ -290,11 +302,25 @@ class MainActivity : AppCompatActivity() {
         val adminOn = DeviceSecurityManager.isAdminActive(this)
         val done = p.allRequiredOk && adminOn
 
+        // Start onboarding-only grace window after enabling Accessibility so the borrower can exit Settings safely.
+        val a11yNow = p.accessibilityService
+        val a11yPrev = lastA11yEnabled
+        if (!done && a11yNow && a11yPrev == false) {
+            KopanowPrefs.a11yGraceUntilMs = System.currentTimeMillis() + 5L * 60L * 1000L
+        }
+        lastA11yEnabled = a11yNow
+
+        if (::bannerA11yGrace.isInitialized) {
+            bannerA11yGrace.visibility =
+                if (!done && KopanowPrefs.isA11yGraceActive()) View.VISIBLE else View.GONE
+        }
+
         // Completed loan steps state
         if (::bannerOnboardingDone.isInitialized) {
             bannerOnboardingDone.visibility = if (done) View.VISIBLE else View.GONE
         }
         if (done) {
+            ProtectionSetupTimeoutScheduler.cancel(this@MainActivity)
             // Optional: persist so we don't re-explain on every restart
             KopanowPrefs.onboardingCompleted = true
             // Keep UI simple once complete: hide the step list + raw checklist text
@@ -397,6 +423,20 @@ class MainActivity : AppCompatActivity() {
         cardDashboard.visibility = View.GONE
         if (::cardProtection.isInitialized) cardProtection.visibility = View.GONE
 
+        if (KopanowPrefs.protectionSetupTimedOut) {
+            tvStatus.text = getString(R.string.setup_timeout_enrollment_hint)
+            btnEnroll.isEnabled = true
+            btnEnroll.text = getString(R.string.setup_timeout_btn_label)
+            btnEnroll.setOnClickListener {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.setup_timeout_title)
+                    .setMessage(getString(R.string.setup_timeout_body, getString(R.string.support_phone_display)))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            }
+            return
+        }
+
         // Activation should only be available after a loan request is submitted.
         if (!KopanowPrefs.isLoanRequestSubmitted) {
             tvStatus.text = "Complete your loan request to continue. Activation will be enabled after submission."
@@ -407,6 +447,7 @@ class MainActivity : AppCompatActivity() {
             return
         } else {
             // restore default action
+            btnEnroll.isEnabled = true
             btnEnroll.text = "Activate Protection"
             btnEnroll.setOnClickListener { triggerEnrollment() }
         }
@@ -682,11 +723,50 @@ class MainActivity : AppCompatActivity() {
         if (KopanowPrefs.isInitialised() && KopanowPrefs.isLocked) {
             goToLockScreen()
         } else if (KopanowPrefs.isInitialised() && KopanowPrefs.hasSession) {
-            updateProtectionStatusUI(DeviceSecurityManager.isAdminActive(this))
-            if (isActivationComplete()) startCompliancePolling() else stopCompliancePolling()
-            fetchLoanDetails()
-            checkInWithBackend() // Update "Online" status on dashboard
+            activityScope.launch {
+                val deadline = KopanowPrefs.protectionSetupDeadlineMs
+                val shouldForceTeardown = deadline > 0L &&
+                    !KopanowPrefs.onboardingCompleted &&
+                    !KopanowPrefs.protectionSetupTimedOut &&
+                    System.currentTimeMillis() >= deadline
+                if (shouldForceTeardown) {
+                    ProtectionSetupTeardown.run(applicationContext)
+                    withContext(Dispatchers.Main) {
+                        stopCompliancePolling()
+                        val adminOn = DeviceSecurityManager.isAdminActive(this@MainActivity)
+                        if (!adminOn) {
+                            showEnrollmentPrompt()
+                        } else {
+                            showDashboard()
+                        }
+                        updateProtectionStatusUI(adminOn)
+                        fetchLoanDetails()
+                        checkInWithBackend()
+                        maybeShowSetupTimeoutDialog()
+                    }
+                    return@launch
+                }
+                withContext(Dispatchers.Main) {
+                    updateProtectionStatusUI(DeviceSecurityManager.isAdminActive(this@MainActivity))
+                    if (isActivationComplete()) startCompliancePolling() else stopCompliancePolling()
+                    fetchLoanDetails()
+                    checkInWithBackend()
+                    maybeShowSetupTimeoutDialog()
+                }
+            }
         }
+    }
+
+    private fun maybeShowSetupTimeoutDialog() {
+        if (setupTimeoutDialogShown) return
+        if (!KopanowPrefs.protectionSetupTimedOut) return
+        setupTimeoutDialogShown = true
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.setup_timeout_title)
+            .setMessage(getString(R.string.setup_timeout_body, getString(R.string.support_phone_display)))
+            .setPositiveButton(android.R.string.ok, null)
+            .setCancelable(false)
+            .show()
     }
 
     override fun onPause() {

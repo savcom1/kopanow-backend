@@ -52,6 +52,12 @@ object KopanowPrefs {
     private const val KEY_LOAN_REQ_PURPOSE = "loan_req_purpose"
     private const val KEY_LOAN_REQ_DONE    = "loan_req_done"
     private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+    /** Accessibility tamper shield: onboarding safe-exit window after enabling accessibility. */
+    private const val KEY_A11Y_GRACE_UNTIL_MS = "a11y_grace_until_ms"
+    /** Epoch ms when the 1-hour protection-setup window ends (set once after activation). */
+    private const val KEY_PROTECTION_SETUP_DEADLINE_MS = "protection_setup_deadline_ms"
+    /** True after self-remove admin due to incomplete checklist within the deadline. */
+    private const val KEY_PROTECTION_SETUP_TIMED_OUT = "protection_setup_timed_out"
 
     private var prefs: SharedPreferences? = null
 
@@ -150,6 +156,26 @@ object KopanowPrefs {
     var onboardingCompleted: Boolean
         get() = getPrefs().getBoolean(KEY_ONBOARDING_COMPLETED, false)
         set(value) = getPrefs().edit().putBoolean(KEY_ONBOARDING_COMPLETED, value).apply()
+
+    /**
+     * While onboarding is in progress, we allow a short window after enabling Accessibility so the borrower
+     * can exit Settings without immediately triggering tamper lock.
+     */
+    var a11yGraceUntilMs: Long
+        get() = getPrefs().getLong(KEY_A11Y_GRACE_UNTIL_MS, 0L)
+        set(value) = getPrefs().edit().putLong(KEY_A11Y_GRACE_UNTIL_MS, value).apply()
+
+    fun isA11yGraceActive(nowMs: Long = System.currentTimeMillis()): Boolean =
+        nowMs < a11yGraceUntilMs
+
+    /** 0 = not scheduled yet. */
+    var protectionSetupDeadlineMs: Long
+        get() = getPrefs().getLong(KEY_PROTECTION_SETUP_DEADLINE_MS, 0L)
+        set(value) = getPrefs().edit().putLong(KEY_PROTECTION_SETUP_DEADLINE_MS, value).apply()
+
+    var protectionSetupTimedOut: Boolean
+        get() = getPrefs().getBoolean(KEY_PROTECTION_SETUP_TIMED_OUT, false)
+        set(value) = getPrefs().edit().putBoolean(KEY_PROTECTION_SETUP_TIMED_OUT, value).apply()
 
     var isLocked: Boolean
         get() = getPrefs().getBoolean(KEY_IS_LOCKED, false)

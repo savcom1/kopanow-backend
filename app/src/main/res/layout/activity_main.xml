@@ -454,6 +454,50 @@
                         </LinearLayout>
                     </LinearLayout>
 
+                    <!-- Accessibility grace banner (shown briefly after enabling accessibility during onboarding) -->
+                    <LinearLayout
+                        android:id="@+id/banner_a11y_grace"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/grid_2"
+                        android:background="@color/kopanow_surface_muted"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="@dimen/grid_2"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <ImageView
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:contentDescription="@null"
+                            android:src="@android:drawable/ic_dialog_info"
+                            app:tint="@color/kopanow_warning" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/grid_2"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/a11y_grace_title"
+                                android:textAppearance="@style/TextAppearance.Kopanow.Section"
+                                android:textColor="@color/kopanow_navy" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/a11y_grace_body"
+                                android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+                                android:textColor="@color/kopanow_text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
