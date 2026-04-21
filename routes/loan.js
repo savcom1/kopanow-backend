@@ -1,7 +1,11 @@
 'use strict';
 const router = require('express').Router();
 const supabase = require('../helpers/supabase');
-const { assertDeviceFreeForEnrollment } = require('../helpers/deviceEnrollment');
+const {
+  assertDeviceFreeForEnrollment,
+  assertPhoneEligibleForNewLoan,
+  normalizePhone,
+} = require('../helpers/deviceEnrollment');
 const {
   parseRepaymentMonths,
   computeRepaymentSchedule,
@@ -49,12 +53,52 @@ router.post('/request', async (req, res) => {
     if (!borrower_id || !phone || !full_name || !national_id || !region || !address || !amount_tzs || !purpose) {
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
     }
+
+    const phoneNorm = normalizePhone(phone);
+
     const rmQuick = repayment_months != null ? parseInt(repayment_months, 10) : NaN;
     const hasTerm =
       (tenor_days != null && Number(tenor_days) > 0) ||
       (Number.isFinite(rmQuick) && rmQuick >= 1 && rmQuick <= 3);
     if (!hasTerm) {
       return res.status(400).json({ success: false, message: 'Provide tenor_days or repayment_months (1–3).' });
+    }
+
+    // Policy: block duplicate enrollment only if there is an ACTIVE, cash-out-confirmed loan for this phone.
+    const elig = await assertPhoneEligibleForNewLoan(phoneNorm);
+    if (!elig.ok) {
+      return res.status(409).json({ success: false, message: elig.reason });
+    }
+
+    // Resume unfinished: if this phone already has an unconfirmed active loan, return it (no new loan created).
+    const { data: regRows, error: regFindErr } = await supabase
+      .from('registrations')
+      .select('borrower_id')
+      .eq('phone', phoneNorm)
+      .limit(1);
+    if (regFindErr) throw regFindErr;
+    const existingBorrowerId = regRows?.[0]?.borrower_id || null;
+
+    if (existingBorrowerId) {
+      const { data: existingLoan, error: loanFindErr } = await supabase
+        .from('loans')
+        .select('loan_id, borrower_id, cash_disbursement_confirmed_at, repaid_at, outstanding_amount, created_at')
+        .eq('borrower_id', existingBorrowerId)
+        .is('cash_disbursement_confirmed_at', null)
+        .is('repaid_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (loanFindErr) throw loanFindErr;
+      if (existingLoan?.loan_id) {
+        return res.json({
+          success: true,
+          message: 'Resuming your existing loan request.',
+          borrower_id: existingBorrowerId,
+          loan_id: existingLoan.loan_id,
+          resume: true,
+        });
+      }
     }
 
     const loan_id = generateLoanId();
@@ -83,7 +127,7 @@ router.post('/request', async (req, res) => {
       .from('registrations')
       .upsert({
         borrower_id,
-        phone,
+        phone: phoneNorm,
         full_name,
         national_id,
         region,

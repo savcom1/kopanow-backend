@@ -2,6 +2,11 @@
 
 const supabase = require('./supabase');
 
+function normalizePhone(phone) {
+  if (phone == null) return '';
+  return String(phone).trim().replace(/\s+/g, '');
+}
+
 /**
  * One physical device (device_id) may only be linked to a single Kopanow enrollment
  * (borrower_id + loan_id). Re-syncing the same enrollment is allowed.
@@ -40,4 +45,44 @@ async function assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id) {
   return { ok: true };
 }
 
-module.exports = { assertDeviceFreeForEnrollment };
+/**
+ * Policy gate: allow a new loan/enrollment for this phone only if there is no
+ * active cash-out-confirmed loan for the same phone.
+ *
+ * Active = repaid_at is null AND outstanding_amount > 0
+ * Confirmed = cash_disbursement_confirmed_at is not null
+ */
+async function assertPhoneEligibleForNewLoan(phone) {
+  const p = normalizePhone(phone);
+  if (!p) return { ok: false, reason: 'Missing phone — cannot verify eligibility.' };
+
+  const { data: regs, error: rErr } = await supabase
+    .from('registrations')
+    .select('borrower_id, phone')
+    .eq('phone', p)
+    .limit(5);
+  if (rErr) throw rErr;
+
+  const borrowerIds = (regs || []).map((r) => r.borrower_id).filter(Boolean);
+  if (!borrowerIds.length) return { ok: true };
+
+  const { data: loans, error: lErr } = await supabase
+    .from('loans')
+    .select('loan_id, borrower_id, outstanding_amount, repaid_at, cash_disbursement_confirmed_at')
+    .in('borrower_id', borrowerIds)
+    .not('cash_disbursement_confirmed_at', 'is', null)
+    .is('repaid_at', null)
+    .gt('outstanding_amount', 0)
+    .limit(10);
+  if (lErr) throw lErr;
+
+  if ((loans || []).length) {
+    return {
+      ok: false,
+      reason: 'You already have an active loan. Please finish repayment before requesting another loan.',
+    };
+  }
+  return { ok: true };
+}
+
+module.exports = { assertDeviceFreeForEnrollment, assertPhoneEligibleForNewLoan, normalizePhone };

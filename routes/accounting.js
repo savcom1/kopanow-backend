@@ -259,6 +259,9 @@ router.get('/loans', async (req, res) => {
 // ── GET /api/accounting/loans/pending-disbursement (before :loanId route) ───
 router.get('/loans/pending-disbursement', async (req, res) => {
   try {
+    const stageRaw = req.query.stage != null ? String(req.query.stage).toLowerCase() : 'all';
+    const stage = stageRaw === 'ready' || stageRaw === 'not_ready' ? stageRaw : 'all';
+
     const { data: loans, error } = await supabase
       .from('loans')
       .select('*')
@@ -268,6 +271,17 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(500);
     if (error) throw error;
+
+    const loanIds = [...new Set((loans || []).map((l) => l.loan_id).filter(Boolean))];
+    let deviceByLoan = {};
+    if (loanIds.length) {
+      const { data: devices, error: dErr } = await supabase
+        .from('devices')
+        .select('loan_id, mdm_compliance')
+        .in('loan_id', loanIds);
+      if (dErr) throw dErr;
+      deviceByLoan = Object.fromEntries((devices || []).map((d) => [d.loan_id, d]));
+    }
 
     const borrowerIds = [...new Set((loans || []).map((l) => l.borrower_id).filter(Boolean))];
     let nameByBorrower = {};
@@ -279,14 +293,34 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       nameByBorrower = Object.fromEntries((regs || []).map((r) => [r.borrower_id, r]));
     }
 
-    return res.json({
-      success: true,
-      loans: (loans || []).map((l) => ({
+    const enriched = (loans || []).map((l) => {
+      const dev = deviceByLoan[l.loan_id] || null;
+      const mdm = dev?.mdm_compliance && typeof dev.mdm_compliance === 'object' ? dev.mdm_compliance : null;
+      const allOk = mdm?.all_required_ok === true;
+      const okCount = Number.isFinite(mdm?.ok_count) ? Number(mdm.ok_count) : null;
+      const requiredCount = Number.isFinite(mdm?.required_count) ? Number(mdm.required_count) : null;
+      return {
         ...l,
         borrower_full_name: nameByBorrower[l.borrower_id]?.full_name || null,
         borrower_phone: nameByBorrower[l.borrower_id]?.phone || null,
-      })),
-      count: (loans || []).length,
+        protection_all_required_ok: allOk,
+        protection_ok_count: okCount,
+        protection_required_count: requiredCount,
+      };
+    });
+
+    const filtered =
+      stage === 'all'
+        ? enriched
+        : enriched.filter((l) =>
+            stage === 'ready' ? l.protection_all_required_ok === true : l.protection_all_required_ok !== true,
+          );
+
+    return res.json({
+      success: true,
+      stage,
+      loans: filtered,
+      count: filtered.length,
     });
   } catch (err) {
     console.error('[accounting:pending-disbursement]', err.message);

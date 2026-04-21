@@ -235,9 +235,59 @@ router.get('/disbursement-summary', async (req, res) => {
   }
 });
 
+// Optional KPI: split pending cashout into ready vs needs setup
+router.get('/stage-summary', async (req, res) => {
+  try {
+    const startUtc = new Date();
+    startUtc.setUTCHours(0, 0, 0, 0);
+    const startIso = startUtc.toISOString();
+
+    const { data: pendingLoans, error: pErr } = await supabase
+      .from('loans')
+      .select('loan_id')
+      .is('cash_disbursement_confirmed_at', null)
+      .is('repaid_at', null)
+      .gt('outstanding_amount', 0)
+      .limit(50000);
+    if (pErr) throw pErr;
+
+    const pendingLoanIds = [...new Set((pendingLoans || []).map((l) => l.loan_id).filter(Boolean))];
+    let readyLoanIds = new Set();
+    if (pendingLoanIds.length) {
+      const { data: readyRows, error: rErr } = await supabase
+        .from('devices')
+        .select('loan_id')
+        .in('loan_id', pendingLoanIds)
+        .eq('mdm_compliance->>all_required_ok', 'true')
+        .limit(50000);
+      if (rErr) throw rErr;
+      readyLoanIds = new Set((readyRows || []).map((r) => r.loan_id).filter(Boolean));
+    }
+
+    const pending_cashout_ready_count = pendingLoanIds.filter((id) => readyLoanIds.has(id)).length;
+    const pending_cashout_not_ready_count = pendingLoanIds.length - pending_cashout_ready_count;
+
+    const { count: cashoutSentToday, error: cErr } = await supabase
+      .from('loans')
+      .select('*', { count: 'exact', head: true })
+      .gte('cash_disbursement_confirmed_at', startIso);
+    if (cErr) throw cErr;
+
+    return res.json({
+      success: true,
+      pending_cashout_ready_count,
+      pending_cashout_not_ready_count,
+      cashout_sent_today_count: cashoutSentToday || 0,
+    });
+  } catch (err) {
+    console.error('[admin:stage-summary]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 router.get('/loans', async (req, res) => {
   try {
-    const { device_status, page = 1, limit = 50, search, disbursement } = req.query;
+    const { device_status, page = 1, limit = 50, search, disbursement, protection } = req.query;
     const from = (parseInt(page) - 1) * parseInt(limit);
     const to   = from + parseInt(limit) - 1;
 
@@ -246,6 +296,26 @@ router.get('/loans', async (req, res) => {
     const disb = disbursement != null ? String(disbursement).toLowerCase() : 'all';
     if (disb === 'pending') query = query.is('cash_disbursement_confirmed_at', null);
     else if (disb === 'confirmed') query = query.not('cash_disbursement_confirmed_at', 'is', null);
+
+    // Protection readiness filter (from devices.mdm_compliance.all_required_ok)
+    const prot = protection != null ? String(protection).toLowerCase() : 'all';
+    if (prot === 'complete' || prot === 'incomplete') {
+      const { data: readyRows, error: readyErr } = await supabase
+        .from('devices')
+        .select('loan_id')
+        .eq('mdm_compliance->>all_required_ok', 'true')
+        .limit(50000);
+      if (readyErr) throw readyErr;
+      const readyLoanIds = [...new Set((readyRows || []).map((r) => r.loan_id).filter(Boolean))];
+      if (prot === 'complete') {
+        if (readyLoanIds.length) query = query.in('loan_id', readyLoanIds);
+        else query = query.eq('loan_id', '__no_such_loan__');
+      } else {
+        if (readyLoanIds.length) {
+          query = query.not('loan_id', 'in', `(${quoteBorrowerIdsForInFilter(readyLoanIds).join(',')})`);
+        }
+      }
+    }
 
     const qRaw = search != null ? String(search).trim() : '';
     if (qRaw) {
@@ -292,9 +362,25 @@ router.get('/loans', async (req, res) => {
       }
     }
 
+    // Join protection readiness from devices (treat missing/null as not ready)
+    let deviceByLoan = {};
+    if (loanIdList.length) {
+      const { data: devices, error: dErr } = await supabase
+        .from('devices')
+        .select('loan_id, mdm_compliance')
+        .in('loan_id', loanIdList);
+      if (dErr) throw dErr;
+      deviceByLoan = Object.fromEntries((devices || []).map((d) => [d.loan_id, d]));
+    }
+
     return res.json({
       success: true,
       loans: (loans || []).map((l) => ({
+        protection_all_required_ok:
+          (deviceByLoan[l.loan_id]?.mdm_compliance &&
+            typeof deviceByLoan[l.loan_id].mdm_compliance === 'object' &&
+            deviceByLoan[l.loan_id].mdm_compliance.all_required_ok === true) ||
+          false,
         ...l,
         borrower_full_name: loanNameByBorrower[l.borrower_id] || null,
         days_overdue: daysOverdue(l.next_due_date),

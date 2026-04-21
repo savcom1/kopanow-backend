@@ -13,6 +13,7 @@ let lipaClaimFilter   = 'all';
 let lipaPage          = 1;
 let pendingLipaConfirmId = null;
 let loanDisbursementFilter = 'all';
+let loanProtectionFilter = 'all';
 
 const $  = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -255,6 +256,12 @@ async function loadDashboard() {
     }
   }
 
+  const stage = await apiFetch(`${API}/stage-summary`);
+  if (stage.success) {
+    $('#kpi-disburse-ready').textContent = stage.pending_cashout_ready_count ?? '—';
+    $('#kpi-disburse-not-ready').textContent = stage.pending_cashout_not_ready_count ?? '—';
+  }
+
   const tbody = $('#dash-tbody');
   // Sort client-side: put devices with last_seen first (most recent), then newly
   // enrolled devices with null last_seen (sorted by updated_at desc)
@@ -390,8 +397,12 @@ async function loadLoans() {
     loanDisbursementFilter && loanDisbursementFilter !== 'all'
       ? `&disbursement=${encodeURIComponent(loanDisbursementFilter)}`
       : '';
+  const protQs =
+    loanProtectionFilter && loanProtectionFilter !== 'all'
+      ? `&protection=${encodeURIComponent(loanProtectionFilter)}`
+      : '';
   const data = await apiFetch(
-    `${API}/loans?limit=100&search=${encodeURIComponent(search)}${disbQs}`
+    `${API}/loans?limit=100&search=${encodeURIComponent(search)}${disbQs}${protQs}`
   );
   if (!data.success) return;
   const tbody = $('#loans-tbody');
@@ -406,6 +417,10 @@ async function loadLoans() {
     const borrowerCol = bName
       ? `<div><strong>${esc(bName)}</strong></div><div class="mono text-muted" style="font-size:11px">${esc(l.borrower_id)}</div>`
       : `<span class="mono">${esc(l.borrower_id)}</span>`;
+    const setup =
+      l.protection_all_required_ok === true
+        ? `<span style="color:var(--green);font-weight:600">Ready</span>`
+        : `<span style="color:var(--amber);font-weight:600">Not ready</span>`;
     return `
     <tr>
       <td class="mono">${esc(l.loan_id)}</td>
@@ -417,6 +432,7 @@ async function loadLoans() {
       <td>${l.days_overdue > 0 ? `<span style="color:var(--red)">${l.days_overdue}d</span>` : '<span style="color:var(--green)">OK</span>'}</td>
       <td style="font-size:12px">${formatInvoiceSummaryHtml(l.invoice_summary)}</td>
       <td style="font-size:12px;white-space:nowrap">${cashOutCellHtml(l)}</td>
+      <td style="font-size:12px;white-space:nowrap">${setup}</td>
       <td>${statusBadge(l.device_status)}</td>
     </tr>`;
   }).join('');
@@ -1082,6 +1098,15 @@ document.addEventListener('DOMContentLoaded', () => {
     chip.addEventListener('click', () => {
       loanDisbursementFilter = chip.dataset.disbursement;
       $$('#view-loans .chip[data-disbursement]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      loadLoans();
+    });
+  });
+
+  $$('#view-loans .chip[data-protection]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      loanProtectionFilter = chip.dataset.protection;
+      $$('#view-loans .chip[data-protection]').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       loadLoans();
     });

@@ -100,6 +100,14 @@
           <div class="kpi-value" id="kpi-disburse-pending">—</div>
           <div class="kpi-hint text-muted" id="kpi-disburse-sub" style="font-size:11px;margin-top:4px"></div>
         </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-label">Pending cash-out (Ready)</div>
+          <div class="kpi-value" id="kpi-disburse-ready">—</div>
+        </div>
+        <div class="kpi-card kpi-amber">
+          <div class="kpi-label">Pending cash-out (Needs setup)</div>
+          <div class="kpi-value" id="kpi-disburse-not-ready">—</div>
+        </div>
       </div>
 
       <div class="section-title">Recently Seen Devices</div>
@@ -160,6 +168,10 @@
         <button class="chip active" data-disbursement="all" type="button">All loans</button>
         <button class="chip" data-disbursement="pending" type="button">Incomplete / pending cash-out</button>
         <button class="chip" data-disbursement="confirmed" type="button">Cash sent</button>
+        <span class="text-muted" style="margin-left:12px;font-size:12px">Phone setup:</span>
+        <button class="chip active" data-protection="all" type="button">All</button>
+        <button class="chip" data-protection="complete" type="button">Protection complete</button>
+        <button class="chip" data-protection="incomplete" type="button">Protection incomplete</button>
       </div>
       <div class="table-wrap">
         <table class="data-table" id="loans-table">
@@ -168,6 +180,7 @@
               <th>Loan ID</th><th>Borrower</th><th>Principal</th>
               <th>Total / Weekly</th><th>Outstanding</th><th>Next Due</th>
               <th>Overdue</th><th>Invoices</th><th>Cash out</th><th>Device Status</th>
+              <th>Phone setup</th><th>Device Status</th>
             </tr>
           </thead>
           <tbody id="loans-tbody"></tbody>

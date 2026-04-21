@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../helpers/supabase');
-const { assertDeviceFreeForEnrollment } = require('../helpers/deviceEnrollment');
+const { assertDeviceFreeForEnrollment, assertPhoneEligibleForNewLoan } = require('../helpers/deviceEnrollment');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
 
@@ -100,7 +100,20 @@ async function fetchLoanInvoicesForLoanRow(canonicalLoanId, borrower_id) {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/enrollment-check', async (req, res) => {
   try {
-    const { device_id, borrower_id, loan_id } = req.body || {};
+    const { device_id, borrower_id, loan_id, phone, mpesa_phone } = req.body || {};
+
+    const phoneToCheck = phone || mpesa_phone || null;
+    if (phoneToCheck) {
+      const elig = await assertPhoneEligibleForNewLoan(phoneToCheck);
+      if (!elig.ok) {
+        return res.json({
+          success: true,
+          allowed: false,
+          reason: elig.reason,
+        });
+      }
+    }
+
     const result = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
     if (!result.ok) {
       return res.json({
@@ -135,6 +148,13 @@ router.post('/register', async (req, res) => {
 
     if (!borrower_id || !loan_id) {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
+    }
+
+    if (mpesa_phone) {
+      const elig = await assertPhoneEligibleForNewLoan(mpesa_phone);
+      if (!elig.ok) {
+        return res.status(409).json({ success: false, error: elig.reason });
+      }
     }
 
     const enrollment = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
