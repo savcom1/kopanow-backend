@@ -259,7 +259,12 @@ class RegistrationActivity : AppCompatActivity() {
                         contractLauncher.launch(i)
                     } else {
                         KopanowPrefs.isLoanRequestSubmitted = false
-                        tvStatus.text = result.data?.message ?: (result.error ?: "Request failed. Please try again.")
+                        val msgRaw = result.data?.message ?: (result.error ?: "Request failed. Please try again.")
+                        val msg = if (msgRaw.contains("active loan", ignoreCase = true)) {
+                            "You already have an active loan. Please repay first, then request again."
+                        } else msgRaw
+                        tvStatus.text = msg
+                        Toast.makeText(this@RegistrationActivity, msg, Toast.LENGTH_LONG).show()
                     }
                 }
             }

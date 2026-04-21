@@ -91,7 +91,9 @@ data class RegisterDeviceResponse(
 data class EnrollmentCheckRequest(
     @SerializedName("device_id") val deviceId: String,
     @SerializedName("borrower_id") val borrowerId: String,
-    @SerializedName("loan_id") val loanId: String
+    @SerializedName("loan_id") val loanId: String,
+    /** Optional: enables phone-based defense-in-depth check on backend. */
+    @SerializedName("mpesa_phone") val mpesaPhone: String? = null,
 )
 
 data class EnrollmentCheckResponse(
@@ -205,6 +207,8 @@ data class LoanRequestResponse(
     @SerializedName("message") val message: String?,
     @SerializedName("borrower_id") val borrowerId: String?,
     @SerializedName("loan_id") val loanId: String?,
+    /** True when backend returns existing loan for this phone (resume unfinished). */
+    @SerializedName("resume") val resume: Boolean? = null,
     @SerializedName("contract_number") val contractNumber: String? = null,
     /** JSON numbers may deserialize as Double when using Gson ToNumberPolicy. */
     @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Double? = null,
@@ -416,7 +420,7 @@ object KopanowApi {
     ): ApiResult<EnrollmentCheckResponse> =
         post(
             "/device/enrollment-check",
-            EnrollmentCheckRequest(deviceId, borrowerId, loanId),
+            EnrollmentCheckRequest(deviceId, borrowerId, loanId, mpesaPhone = KopanowPrefs.phoneNumber),
             EnrollmentCheckResponse::class.java
         )
 
