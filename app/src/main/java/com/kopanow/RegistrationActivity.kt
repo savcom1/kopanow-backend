@@ -126,31 +126,10 @@ class RegistrationActivity : AppCompatActivity() {
         val tvMkopoAutoHint = findViewById<TextView>(R.id.tv_mkopo_auto_hint)
 
         var mkopoEntries: List<DeviceMkopoEntry> = emptyList()
-        var currentMkopoModels: List<DeviceMkopoEntry> = emptyList()
         try {
             mkopoEntries = DeviceMkopoCatalog.getEntries(this)
         } catch (_: Exception) {
             // Missing or invalid asset — hide MKOPO UI
-        }
-
-        fun formatMkopoLine(e: DeviceMkopoEntry): String {
-            val rounded = DeviceMkopoResolver.roundToNearest1000(e.mkopoTzs)
-            val amt = NumberFormat.getIntegerInstance(Locale("en", "TZ")).format(rounded)
-            return DeviceMkopoResolver.formatLine(e, "$amt TZS")
-        }
-
-        fun applyMkopoEntry(entry: DeviceMkopoEntry) {
-            val rounded = DeviceMkopoResolver.roundToNearest1000(entry.mkopoTzs)
-            etAmount.setText(rounded.toString())
-            refreshWeeklyInstallmentPreview()
-        }
-
-        fun repopulateModelsForBrand(brand: String) {
-            currentMkopoModels = DeviceMkopoResolver.modelsForBrand(mkopoEntries, brand)
-            val lines = currentMkopoModels.map(::formatMkopoLine)
-            val modelAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, lines)
-            actvMkopoModel.setAdapter(modelAdapter)
-            actvMkopoModel.threshold = 0
         }
 
         if (mkopoEntries.isEmpty()) {
@@ -159,22 +138,10 @@ class RegistrationActivity : AppCompatActivity() {
             tilMkopoModel.visibility = View.GONE
             tvMkopoAutoHint.visibility = View.GONE
         } else {
-            val brands = DeviceMkopoResolver.distinctBrands(mkopoEntries)
-            val brandAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, brands)
-            actvMkopoBrand.setAdapter(brandAdapter)
-            actvMkopoBrand.threshold = 0
-
-            actvMkopoBrand.setOnItemClickListener { parent, _, position, _ ->
-                val b = parent.getItemAtPosition(position) as? String ?: return@setOnItemClickListener
-                actvMkopoModel.setText("", false)
-                repopulateModelsForBrand(b)
-            }
-
-            actvMkopoModel.setOnItemClickListener { parent, _, position, _ ->
-                val line = parent.getItemAtPosition(position) as? String ?: return@setOnItemClickListener
-                val entry = currentMkopoModels.find { formatMkopoLine(it) == line }
-                if (entry != null) applyMkopoEntry(entry)
-            }
+            // Fully automatic flow: do not force brand/model picking. Keep fields hidden in the layout.
+            tvMkopoSection.visibility = View.GONE
+            tilMkopoBrand.visibility = View.GONE
+            tilMkopoModel.visibility = View.GONE
 
             if (KopanowPrefs.requestedLoanAmountTzs <= 0L && etAmount.text?.isNotBlank() != true) {
                 val suggestion = DeviceMkopoResolver.suggestFromBuild(
@@ -188,11 +155,6 @@ class RegistrationActivity : AppCompatActivity() {
                     etAmount.setText(s.amountTzsRounded.toString())
                     tvMkopoAutoHint.text = getString(R.string.reg_mkopo_detected_fmt, s.label)
                     tvMkopoAutoHint.visibility = View.VISIBLE
-                    s.entry?.let { en ->
-                        actvMkopoBrand.setText(en.brand, false)
-                        repopulateModelsForBrand(en.brand)
-                        actvMkopoModel.setText(formatMkopoLine(en), false)
-                    }
                     refreshWeeklyInstallmentPreview()
                 }
             }

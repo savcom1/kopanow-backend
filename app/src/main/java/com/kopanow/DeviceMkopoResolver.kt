@@ -1,6 +1,7 @@
 package com.kopanow
 
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import kotlin.math.roundToLong
 
 /**
@@ -40,23 +41,59 @@ object DeviceMkopoResolver {
         device: String
     ): Suggestion? {
         val entries = DeviceMkopoCatalog.getEntries(context)
+        return suggestFromBuildEntries(entries, manufacturer, brand, model, device)
+    }
+
+    @JvmStatic
+    @VisibleForTesting
+    internal fun suggestFromBuildEntries(
+        entries: List<DeviceMkopoEntry>,
+        manufacturer: String,
+        brand: String,
+        model: String,
+        device: String
+    ): Suggestion? {
         val canonical = resolveCanonicalBrands(manufacturer, brand, model)
         if (canonical.isEmpty()) return null
         val hay = "$manufacturer $brand $model $device".lowercase()
+
+        // Collect all matches across canonical brands, then pick the safest (lowest MKOPO).
+        val matches = mutableListOf<DeviceMkopoEntry>()
         for (b in canonical) {
             val candidates = entries.filter { it.brand.equals(b, ignoreCase = true) }
-                .sortedByDescending { it.model.length }
             for (e in candidates) {
-                if (entryMatchesBuild(e, hay)) {
-                    val rounded = roundToNearest1000(e.mkopoTzs)
-                    return Suggestion(
-                        amountTzsRounded = rounded,
-                        label = "${e.brand} ${e.model}",
-                        entry = e
-                    )
-                }
+                if (entryMatchesBuild(e, hay)) matches += e
             }
         }
+        val bestMatch = matches.minByOrNull { it.mkopoTzs }
+        if (bestMatch != null) {
+            val rounded = roundToNearest1000(bestMatch.mkopoTzs)
+            return Suggestion(
+                amountTzsRounded = rounded,
+                label = "${bestMatch.brand} ${bestMatch.model}",
+                entry = bestMatch
+            )
+        }
+
+        // Fallback: brand is known but model didn't match — choose the minimum MKOPO for that brand.
+        val fallback = canonical
+            .mapNotNull { b ->
+                val list = entries.filter { it.brand.equals(b, ignoreCase = true) }
+                val min = list.minByOrNull { it.mkopoTzs }
+                if (min == null) null else (b to min)
+            }
+            .minByOrNull { (_, e) -> e.mkopoTzs }
+            ?.second
+
+        if (fallback != null) {
+            val rounded = roundToNearest1000(fallback.mkopoTzs)
+            return Suggestion(
+                amountTzsRounded = rounded,
+                label = "${fallback.brand} (default)",
+                entry = fallback
+            )
+        }
+
         return null
     }
 
@@ -64,10 +101,11 @@ object DeviceMkopoResolver {
         val m = manufacturer.lowercase()
         val b = brand.lowercase()
         val mo = model.lowercase()
-        val combined = "$m $b $mo"
         val out = LinkedHashSet<String>()
 
         when {
+            // Samsung model codes: SM-*.
+            mo.startsWith("sm-") -> out += "Samsung"
             "samsung" in m || "samsung" in b -> out += "Samsung"
             "google" in m || "google" in b || "pixel" in mo -> out += "Google"
             "xiaomi" in m || "xiaomi" in b || "redmi" in m || "redmi" in b || "redmi" in mo ||

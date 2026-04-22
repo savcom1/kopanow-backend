@@ -33,9 +33,38 @@ class DeviceMkopoResolverTest {
     }
 
     @Test
+    fun resolveCanonicalBrands_samsungFromSmModelEvenIfBrandUnknown() {
+        val list = DeviceMkopoResolver.resolveCanonicalBrands("", "", "SM-A145F")
+        assertEquals(listOf("Samsung"), list)
+    }
+
+    @Test
     fun resolveCanonicalBrands_xiaomiRedmi() {
         val list = DeviceMkopoResolver.resolveCanonicalBrands("Xiaomi", "Redmi", "Redmi Note 10")
         assertTrue(list.contains("Xiaomi"))
+    }
+
+    @Test
+    fun suggestFromBuild_ambiguousPicksLowerMkopo() {
+        val entries = listOf(
+            DeviceMkopoEntry("Samsung", "Galaxy A14", 25000L, "Galaxy A", patterns = listOf("SM-A145")),
+            DeviceMkopoEntry("Samsung", "Galaxy A14 5G", 26000L, "Galaxy A", patterns = listOf("SM-A145"))
+        )
+
+        val s = DeviceMkopoResolver.suggestFromBuildEntries(entries, "", "", "SM-A145F", "")!!
+        assertEquals(25000L, s.amountTzsRounded)
+    }
+
+    @Test
+    fun suggestFromBuild_unknownSamsungModelFallsBackToMinSamsung() {
+        val entries = listOf(
+            DeviceMkopoEntry("Samsung", "Galaxy A03", 8000L, "Galaxy A", patterns = listOf("SM-A035")),
+            DeviceMkopoEntry("Samsung", "Galaxy S25 Ultra", 72000L, "Galaxy S", patterns = listOf("SM-S938"))
+        )
+
+        val s = DeviceMkopoResolver.suggestFromBuildEntries(entries, "", "", "SM-XYZ999", "")!!
+        assertEquals(8000L, s.amountTzsRounded)
+        assertTrue(s.label.contains("default", ignoreCase = true))
     }
 
     @Test
