@@ -5,6 +5,7 @@ const supabase = require('../helpers/supabase');
 const { assertDeviceFreeForEnrollment, assertPhoneEligibleForNewLoan } = require('../helpers/deviceEnrollment');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
+const { normalizeTzPhone } = require('../helpers/lipaPayment');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -150,8 +151,9 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, error: 'borrower_id and loan_id are required' });
     }
 
-    if (mpesa_phone) {
-      const elig = await assertPhoneEligibleForNewLoan(mpesa_phone);
+    const mpesaPhoneNorm = mpesa_phone ? normalizeTzPhone(mpesa_phone) : null;
+    if (mpesaPhoneNorm) {
+      const elig = await assertPhoneEligibleForNewLoan(mpesaPhoneNorm);
       if (!elig.ok) {
         return res.status(409).json({ success: false, error: elig.reason });
       }
@@ -202,7 +204,7 @@ router.post('/register', async (req, res) => {
         device_id:    device_id    || null,
         fcm_token:    fcm_token    || null,
         device_model: device_model || null,
-        mpesa_phone:  mpesa_phone  || null,
+        mpesa_phone:  mpesaPhoneNorm || null,
         device_info,
         status:       'registered',
         dpc_active:   true,

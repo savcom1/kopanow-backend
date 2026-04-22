@@ -133,7 +133,13 @@ async function markOverdueInvoices() {
 }
 
 /**
- * Apply a verified payment to oldest unpaid installments first (full installments only).
+ * Apply a verified payment to oldest unpaid installments first.
+ *
+ * Business rule:
+ * - Partial payments reduce the oldest unpaid invoice amount_due (remaining due).
+ * - Overpayments spill to the next invoice(s).
+ *
+ * Note: We treat loan_invoices.amount_due as the *remaining* amount due for that installment.
  */
 async function applyPaymentToInvoices(loan_id, amount_paid) {
   let remaining = Number(amount_paid);
@@ -149,20 +155,41 @@ async function applyPaymentToInvoices(loan_id, amount_paid) {
   if (error) throw error;
 
   const now = new Date().toISOString();
-  let count = 0;
+  let countPaid = 0;
   for (const inv of invs || []) {
     if (remaining <= 0) break;
-    const due = Number(inv.amount_due);
-    if (remaining >= due) {
+
+    const due = Math.max(0, Number(inv.amount_due) || 0);
+    if (due <= 0) {
+      // Defensive: if an unpaid invoice has 0 due, mark paid.
       await supabase
         .from('loan_invoices')
         .update({ status: 'paid', paid_at: now, updated_at: now })
         .eq('id', inv.id);
-      remaining -= due;
-      count++;
+      countPaid++;
+      continue;
     }
+
+    const apply = Math.min(remaining, due);
+    const newDue = Math.round((due - apply) * 100) / 100;
+
+    if (newDue <= 0) {
+      await supabase
+        .from('loan_invoices')
+        .update({ status: 'paid', paid_at: now, amount_due: 0, updated_at: now })
+        .eq('id', inv.id);
+      countPaid++;
+    } else {
+      await supabase
+        .from('loan_invoices')
+        .update({ amount_due: newDue, status: 'pending', paid_at: null, updated_at: now })
+        .eq('id', inv.id);
+    }
+
+    remaining -= apply;
   }
-  return { applied: Number(amount_paid) - remaining, invoices_paid: count };
+
+  return { applied: Number(amount_paid) - remaining, invoices_paid: countPaid };
 }
 
 /**

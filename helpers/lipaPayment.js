@@ -168,10 +168,7 @@ async function validateTxAmountForLoan(loan_id, txAmount) {
   const outstanding = Number(loan?.outstanding_amount || 0);
   const amt = Number(txAmount);
   if (!Number.isFinite(amt) || amt <= 0) return { ok: false, reason: 'Invalid transaction amount' };
-  // Allow small overpay (fees / rounding)
-  if (amt > outstanding + 10000) {
-    return { ok: false, reason: 'Transaction amount is larger than your remaining loan balance' };
-  }
+  // Allow overpayment: apply across invoices and cap outstanding at 0.
   return { ok: true, outstanding };
 }
 
@@ -254,17 +251,29 @@ async function attemptAutoMatchIncomingLipa(txRow) {
   const payerNorm = normalizeTzPhone(txRow.payer_phone);
   if (!payerNorm) return { matched: false, reason: 'no_payer_phone' };
 
-  const { data: devices, error } = await supabase
+  // Fast path: mpesa_phone is stored normalized (255...).
+  const { data: direct, error: dErr } = await supabase
     .from('devices')
     .select('id, borrower_id, loan_id, mpesa_phone, status')
-    .not('mpesa_phone', 'is', null);
+    .eq('mpesa_phone', payerNorm)
+    .neq('status', 'admin_removed');
 
-  if (error) throw error;
+  if (dErr) throw dErr;
 
-  const candidates = (devices || []).filter((d) => {
-    const dn = normalizeTzPhone(d.mpesa_phone);
-    return dn && dn === payerNorm && d.status !== 'admin_removed';
-  });
+  let candidates = direct || [];
+
+  // Legacy fallback: some devices may have mpesa_phone in a non-canonical format.
+  if (candidates.length === 0) {
+    const { data: devices, error } = await supabase
+      .from('devices')
+      .select('id, borrower_id, loan_id, mpesa_phone, status')
+      .not('mpesa_phone', 'is', null);
+    if (error) throw error;
+    candidates = (devices || []).filter((d) => {
+      const dn = normalizeTzPhone(d.mpesa_phone);
+      return dn && dn === payerNorm && d.status !== 'admin_removed';
+    });
+  }
 
   if (candidates.length === 0) return { matched: false, reason: 'no_device_phone_match' };
   if (candidates.length > 1) {

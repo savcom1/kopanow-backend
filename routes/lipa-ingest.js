@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../helpers/supabase');
 const { attemptAutoMatchIncomingLipa } = require('../helpers/lipaPayment');
+const { normalizeTzPhone } = require('../helpers/lipaPayment');
 
 /**
  * POST /api/lipa/transactions
@@ -63,6 +64,11 @@ router.post('/transactions', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid amount' });
     }
 
+    const payerNorm = normalizeTzPhone(payer_phone);
+    if (!payerNorm) {
+      return res.status(400).json({ success: false, error: 'Invalid payer_phone' });
+    }
+
     const { data: existing } = await supabase
       .from('lipa_transactions')
       .select('*')
@@ -105,7 +111,7 @@ router.post('/transactions', async (req, res) => {
         .from('lipa_transactions')
         .update({
           amount: amt,
-          payer_phone: String(payer_phone).trim(),
+          payer_phone: payerNorm,
           till_number: till_number != null ? String(till_number) : null,
           raw_sms: raw_sms != null ? String(raw_sms) : null,
           ingested_at: new Date().toISOString(),
@@ -122,7 +128,7 @@ router.post('/transactions', async (req, res) => {
         .insert({
           transaction_ref: ref,
           amount: amt,
-          payer_phone: String(payer_phone).trim(),
+          payer_phone: payerNorm,
           till_number: till_number != null ? String(till_number) : null,
           raw_sms: raw_sms != null ? String(raw_sms) : null,
           source: 'sms',
