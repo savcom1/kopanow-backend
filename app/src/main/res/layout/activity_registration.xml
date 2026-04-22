@@ -101,7 +101,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/grid_2"
-            android:hint="M-Pesa phone number (255…)"
+            android:hint="@string/reg_phone_hint"
             app:boxStrokeColor="@color/kopanow_navy"
             app:hintTextColor="@color/kopanow_text_muted"
             app:layout_constraintTop_toBottomOf="@id/til_national_id">

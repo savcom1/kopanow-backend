@@ -8,6 +8,9 @@
     <string name="invoice_row_sub_fmt">Due %1$s · %2$s</string>
     <string name="next_due_none">No upcoming installment</string>
 
+    <string name="home_repayment_lipa_message">marejesho LIPA : 8681154\nMIX BY YAS JINA ELEGANSKY FINANCE</string>
+    <string name="reg_phone_hint">Namba ya simu (inayopokea hela na kutuma marejesho) — 255XXXXXXXXX</string>
+
     <!-- Support (Tanzania) — shown across registration, main app, lock UI, notifications -->
     <string name="support_phone_tel" translatable="false">+255664212529</string>
     <string name="support_phone_display" translatable="false">0664212529</string>
