@@ -38,8 +38,13 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         Log.w(TAG, "onDisableRequested: Attempt to deactivate detected. Locking...")
         KopanowPrefs.init(context.applicationContext)
-        triggerTamperLock(context)
-        enqueueTamperReport(context, "admin_disable_requested")
+        // Policy: do not engage tamper lock during onboarding or before delayed arming.
+        if (KopanowPrefs.onboardingCompleted && KopanowPrefs.isTamperEnforcementActive()) {
+            triggerTamperLock(context)
+            enqueueTamperReport(context, "admin_disable_requested")
+        } else {
+            Log.w(TAG, "onDisableRequested: tamper enforcement not active yet — ignoring")
+        }
         return context.getString(R.string.admin_disable_blocked_message)
     }
 
@@ -85,8 +90,13 @@ class KopanowAdminReceiver : DeviceAdminReceiver() {
 
         // Always engage tamper lock + watchdog loop until ops clears via admin UI (FCM UNLOCK / policy).
         // Do not skip when hasSession is false — borrower/loan prefs may be missing while admin was still active.
-        triggerTamperLock(context)
-        enqueueTamperReport(context, "admin_disabled_by_user")
+        // Policy: do not engage tamper lock during onboarding or before delayed arming.
+        if (KopanowPrefs.onboardingCompleted && KopanowPrefs.isTamperEnforcementActive()) {
+            triggerTamperLock(context)
+            enqueueTamperReport(context, "admin_disabled_by_user")
+        } else {
+            Log.w(TAG, "onDisabled: tamper enforcement not active yet — skipping tamper lock/report")
+        }
     }
 
     /**

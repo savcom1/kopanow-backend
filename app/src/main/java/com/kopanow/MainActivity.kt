@@ -323,6 +323,9 @@ class MainActivity : AppCompatActivity() {
             ProtectionSetupTimeoutScheduler.cancel(this@MainActivity)
             // Optional: persist so we don't re-explain on every restart
             KopanowPrefs.onboardingCompleted = true
+            // Per policy: do not enforce tamper locks immediately after completion.
+            // Arm enforcement 5 minutes after onboarding finishes.
+            KopanowPrefs.tamperEnforceAfterMs = System.currentTimeMillis() + 5L * 60L * 1000L
             // Keep UI simple once complete: hide the step list + raw checklist text
             llComplianceGuidedSteps.visibility = View.GONE
             tvMdmChecklist.visibility = View.GONE

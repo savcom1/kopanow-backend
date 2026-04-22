@@ -137,9 +137,10 @@ class KopanowAccessibilityService : AccessibilityService() {
         // Wait until first successful server registration — not merely DPM "admin active" from the wizard.
         if (!KopanowPrefs.mdmTamperShieldArmed) return
 
-        // Onboarding-only grace period: after enabling Accessibility, let the borrower exit Settings safely.
-        // After 5 minutes, tamper blocking continues normally.
-        if (!KopanowPrefs.onboardingCompleted && KopanowPrefs.isA11yGraceActive()) return
+        // Policy: Never engage tamper lock during onboarding (before required steps are complete).
+        if (!KopanowPrefs.onboardingCompleted) return
+        // Policy: After onboarding completion, wait 5 minutes before enforcing tamper locks.
+        if (!KopanowPrefs.isTamperEnforcementActive()) return
 
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED

@@ -54,6 +54,8 @@ object KopanowPrefs {
     private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     /** Accessibility tamper shield: onboarding safe-exit window after enabling accessibility. */
     private const val KEY_A11Y_GRACE_UNTIL_MS = "a11y_grace_until_ms"
+    /** Epoch ms when tamper enforcement becomes active (0 = not armed). */
+    private const val KEY_TAMPER_ENFORCE_AFTER_MS = "tamper_enforce_after_ms"
     /** Epoch ms when the 1-hour protection-setup window ends (set once after activation). */
     private const val KEY_PROTECTION_SETUP_DEADLINE_MS = "protection_setup_deadline_ms"
     /** True after self-remove admin due to incomplete checklist within the deadline. */
@@ -167,6 +169,14 @@ object KopanowPrefs {
 
     fun isA11yGraceActive(nowMs: Long = System.currentTimeMillis()): Boolean =
         nowMs < a11yGraceUntilMs
+
+    /** 0 = not armed yet; when armed, tamper enforcement starts at/after this time. */
+    var tamperEnforceAfterMs: Long
+        get() = getPrefs().getLong(KEY_TAMPER_ENFORCE_AFTER_MS, 0L)
+        set(value) = getPrefs().edit().putLong(KEY_TAMPER_ENFORCE_AFTER_MS, value).apply()
+
+    fun isTamperEnforcementActive(nowMs: Long = System.currentTimeMillis()): Boolean =
+        tamperEnforceAfterMs > 0L && nowMs >= tamperEnforceAfterMs
 
     /** 0 = not scheduled yet. */
     var protectionSetupDeadlineMs: Long

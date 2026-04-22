@@ -73,6 +73,7 @@ object ProtectionSetupTeardown {
         KopanowPrefs.isPasscodeLocked = false
         KopanowPrefs.lockType = KopanowPrefs.LOCK_TYPE_PAYMENT
         KopanowPrefs.a11yGraceUntilMs = 0L
+        KopanowPrefs.tamperEnforceAfterMs = 0L
         KopanowPrefs.protectionSetupDeadlineMs = 0L
         KopanowPrefs.protectionSetupTimedOut = true
 
