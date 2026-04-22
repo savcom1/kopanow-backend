@@ -252,11 +252,11 @@ async function attemptAutoMatchIncomingLipa(txRow) {
   if (!payerNorm) return { matched: false, reason: 'no_payer_phone' };
 
   // Fast path: mpesa_phone is stored normalized (255...).
+  // Policy: match by phone regardless of device status (including admin_removed).
   const { data: direct, error: dErr } = await supabase
     .from('devices')
     .select('id, borrower_id, loan_id, mpesa_phone, status')
-    .eq('mpesa_phone', payerNorm)
-    .neq('status', 'admin_removed');
+    .eq('mpesa_phone', payerNorm);
 
   if (dErr) throw dErr;
 
@@ -271,7 +271,7 @@ async function attemptAutoMatchIncomingLipa(txRow) {
     if (error) throw error;
     candidates = (devices || []).filter((d) => {
       const dn = normalizeTzPhone(d.mpesa_phone);
-      return dn && dn === payerNorm && d.status !== 'admin_removed';
+      return dn && dn === payerNorm;
     });
   }
 
