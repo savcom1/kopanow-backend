@@ -166,6 +166,72 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/til_address" />
 
+        <TextView
+            android:id="@+id/tv_mkopo_section_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_2"
+            android:text="@string/reg_mkopo_section_title"
+            android:textAppearance="@style/TextAppearance.Kopanow.Body"
+            android:textColor="@color/kopanow_text_muted"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_loan_request_title" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_mkopo_brand"
+            style="@style/Widget.Kopanow.TextInput.ExposedDropdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_1"
+            android:hint="@string/reg_mkopo_brand_hint"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
+            app:layout_constraintTop_toBottomOf="@id/tv_mkopo_section_title">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/actv_mkopo_brand"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:completionThreshold="0"
+                android:inputType="none"
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_mkopo_model"
+            style="@style/Widget.Kopanow.TextInput.ExposedDropdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_2"
+            android:hint="@string/reg_mkopo_model_hint"
+            app:boxStrokeColor="@color/kopanow_navy"
+            app:hintTextColor="@color/kopanow_text_muted"
+            app:layout_constraintTop_toBottomOf="@id/til_mkopo_brand">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/actv_mkopo_model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:completionThreshold="0"
+                android:inputType="none"
+                android:textColor="@color/kopanow_text_primary"
+                android:textSize="@dimen/text_body" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:id="@+id/tv_mkopo_auto_hint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/grid_1"
+            android:textAppearance="@style/TextAppearance.Kopanow.Caption"
+            android:textColor="@color/kopanow_teal"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/til_mkopo_model" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_loan_amount"
             style="@style/Widget.Kopanow.TextInput"
@@ -175,7 +241,7 @@
             android:hint="Requested amount (TZS)"
             app:boxStrokeColor="@color/kopanow_navy"
             app:hintTextColor="@color/kopanow_text_muted"
-            app:layout_constraintTop_toBottomOf="@id/tv_loan_request_title">
+            app:layout_constraintTop_toBottomOf="@id/tv_mkopo_auto_hint">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/et_loan_amount"

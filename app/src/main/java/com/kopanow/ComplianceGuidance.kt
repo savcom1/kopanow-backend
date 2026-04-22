@@ -137,6 +137,17 @@ enum class GuidedComplianceStep(
             }
             ACCESSIBILITY -> {
                 try {
+                    // Start onboarding-only grace window *before* opening Accessibility settings.
+                    // Otherwise, the newly-enabled service can see the settings screen and engage tamper lock
+                    // before MainActivity has a chance to set the grace flag on return.
+                    try {
+                        KopanowPrefs.init(activity.applicationContext)
+                        if (!KopanowPrefs.onboardingCompleted) {
+                            KopanowPrefs.a11yGraceUntilMs = System.currentTimeMillis() + 5L * 60L * 1000L
+                        }
+                    } catch (_: Exception) {
+                        // Best effort: if prefs init fails, proceed to settings anyway.
+                    }
                     activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 } catch (_: Exception) {
                     openAppDetails(activity, pkg)

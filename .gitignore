@@ -24,6 +24,7 @@ google-services.json
 *.json
 !kopanow-backend/package.json
 !kopanow-backend/package-lock.json
+!app/src/main/assets/**/*.json
 
 # ── Node / Backend ─────────────────────────────────────────────
 kopanow-backend/node_modules/

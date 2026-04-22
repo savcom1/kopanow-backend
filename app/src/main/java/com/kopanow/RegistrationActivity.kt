@@ -118,6 +118,86 @@ class RegistrationActivity : AppCompatActivity() {
         actvRepaymentMonths.setOnItemClickListener { _, _, _, _ -> refreshWeeklyInstallmentPreview() }
         refreshWeeklyInstallmentPreview()
 
+        val tvMkopoSection = findViewById<TextView>(R.id.tv_mkopo_section_title)
+        val tilMkopoBrand = findViewById<TextInputLayout>(R.id.til_mkopo_brand)
+        val actvMkopoBrand = findViewById<MaterialAutoCompleteTextView>(R.id.actv_mkopo_brand)
+        val tilMkopoModel = findViewById<TextInputLayout>(R.id.til_mkopo_model)
+        val actvMkopoModel = findViewById<MaterialAutoCompleteTextView>(R.id.actv_mkopo_model)
+        val tvMkopoAutoHint = findViewById<TextView>(R.id.tv_mkopo_auto_hint)
+
+        var mkopoEntries: List<DeviceMkopoEntry> = emptyList()
+        var currentMkopoModels: List<DeviceMkopoEntry> = emptyList()
+        try {
+            mkopoEntries = DeviceMkopoCatalog.getEntries(this)
+        } catch (_: Exception) {
+            // Missing or invalid asset — hide MKOPO UI
+        }
+
+        fun formatMkopoLine(e: DeviceMkopoEntry): String {
+            val rounded = DeviceMkopoResolver.roundToNearest1000(e.mkopoTzs)
+            val amt = NumberFormat.getIntegerInstance(Locale("en", "TZ")).format(rounded)
+            return DeviceMkopoResolver.formatLine(e, "$amt TZS")
+        }
+
+        fun applyMkopoEntry(entry: DeviceMkopoEntry) {
+            val rounded = DeviceMkopoResolver.roundToNearest1000(entry.mkopoTzs)
+            etAmount.setText(rounded.toString())
+            refreshWeeklyInstallmentPreview()
+        }
+
+        fun repopulateModelsForBrand(brand: String) {
+            currentMkopoModels = DeviceMkopoResolver.modelsForBrand(mkopoEntries, brand)
+            val lines = currentMkopoModels.map(::formatMkopoLine)
+            val modelAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, lines)
+            actvMkopoModel.setAdapter(modelAdapter)
+            actvMkopoModel.threshold = 0
+        }
+
+        if (mkopoEntries.isEmpty()) {
+            tvMkopoSection.visibility = View.GONE
+            tilMkopoBrand.visibility = View.GONE
+            tilMkopoModel.visibility = View.GONE
+            tvMkopoAutoHint.visibility = View.GONE
+        } else {
+            val brands = DeviceMkopoResolver.distinctBrands(mkopoEntries)
+            val brandAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, brands)
+            actvMkopoBrand.setAdapter(brandAdapter)
+            actvMkopoBrand.threshold = 0
+
+            actvMkopoBrand.setOnItemClickListener { parent, _, position, _ ->
+                val b = parent.getItemAtPosition(position) as? String ?: return@setOnItemClickListener
+                actvMkopoModel.setText("", false)
+                repopulateModelsForBrand(b)
+            }
+
+            actvMkopoModel.setOnItemClickListener { parent, _, position, _ ->
+                val line = parent.getItemAtPosition(position) as? String ?: return@setOnItemClickListener
+                val entry = currentMkopoModels.find { formatMkopoLine(it) == line }
+                if (entry != null) applyMkopoEntry(entry)
+            }
+
+            if (KopanowPrefs.requestedLoanAmountTzs <= 0L && etAmount.text?.isNotBlank() != true) {
+                val suggestion = DeviceMkopoResolver.suggestFromBuild(
+                    this,
+                    Build.MANUFACTURER ?: "",
+                    Build.BRAND ?: "",
+                    Build.MODEL ?: "",
+                    Build.DEVICE ?: ""
+                )
+                suggestion?.let { s ->
+                    etAmount.setText(s.amountTzsRounded.toString())
+                    tvMkopoAutoHint.text = getString(R.string.reg_mkopo_detected_fmt, s.label)
+                    tvMkopoAutoHint.visibility = View.VISIBLE
+                    s.entry?.let { en ->
+                        actvMkopoBrand.setText(en.brand, false)
+                        repopulateModelsForBrand(en.brand)
+                        actvMkopoModel.setText(formatMkopoLine(en), false)
+                    }
+                    refreshWeeklyInstallmentPreview()
+                }
+            }
+        }
+
         btnSubmit.setOnClickListener {
             val fullName = etFullName.text?.toString()?.trim().orEmpty()
             val nationalId = etNationalId.text?.toString()?.trim().orEmpty()
