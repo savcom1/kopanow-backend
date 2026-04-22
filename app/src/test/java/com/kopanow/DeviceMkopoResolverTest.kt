@@ -39,6 +39,18 @@ class DeviceMkopoResolverTest {
     }
 
     @Test
+    fun canonicalizeDeviceModel_groupsSamsungA05Variants() {
+        assertEquals(
+            "Samsung A05",
+            DeviceMkopoResolver.canonicalizeDeviceModel("", "", "SM-A0556")
+        )
+        assertEquals(
+            "Samsung A05",
+            DeviceMkopoResolver.canonicalizeDeviceModel("", "", "SM-A0567")
+        )
+    }
+
+    @Test
     fun resolveCanonicalBrands_xiaomiRedmi() {
         val list = DeviceMkopoResolver.resolveCanonicalBrands("Xiaomi", "Redmi", "Redmi Note 10")
         assertTrue(list.contains("Xiaomi"))

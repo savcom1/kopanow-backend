@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatusBadge: TextView
     private lateinit var llUnpaidInvoices: LinearLayout
     private lateinit var tvUnpaidInvoicesEmpty: TextView
+    private lateinit var btnHomeHelpVideo: MaterialButton
 
     private lateinit var tvProtectionTitle: TextView
     private lateinit var tvProtectionSub: TextView
@@ -189,6 +190,7 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tv_enrollment_status)
         btnEnroll = findViewById(R.id.btn_test_enroll)
         btnPayNow = findViewById(R.id.btn_pay_now)
+        btnHomeHelpVideo = findViewById(R.id.btn_home_help_video)
         tvLoanBalance = findViewById(R.id.tv_loan_balance)
         tvNextDue = findViewById(R.id.tv_next_due)
         tvStatusBadge = findViewById(R.id.tv_status_badge)
@@ -220,6 +222,9 @@ class MainActivity : AppCompatActivity() {
         btnEnroll.setOnClickListener { triggerEnrollment() }
         btnPayNow.setOnClickListener { initiatePayment() }
         btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
+        btnHomeHelpVideo.setOnClickListener {
+            startActivity(Intent(this, HelpVideoActivity::class.java))
+        }
 
         btnMainSubmitRef.setOnClickListener { submitMainManualPaymentReference() }
         btnMainRefreshPaymentHistory.setOnClickListener {

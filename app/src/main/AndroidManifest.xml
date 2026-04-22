@@ -73,6 +73,12 @@
             android:label="Loan Registration" />
 
         <activity
+            android:name=".HelpVideoActivity"
+            android:exported="false"
+            android:label="@string/home_help_video_btn"
+            android:theme="@style/Theme.MyApplication" />
+
+        <activity
             android:name=".contract.ContractActivity"
             android:exported="false"
             android:label="@string/contract_screen_title"

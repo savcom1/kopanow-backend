@@ -61,10 +61,6 @@ class KopanowAccessibilityService : AccessibilityService() {
             "DevelopmentSettings",
             "DevelopmentSettingsDashboard",
             "UsageAccessSettings",
-            "AccessibilitySettings",
-            "ToggleAccessibilityService",
-            "InstalledAppDetails",
-            "AppInfoDashboard",
             "RunningServices",
             // OEM / AOSP variants
             "SecuritySettings",
@@ -151,6 +147,9 @@ class KopanowAccessibilityService : AccessibilityService() {
 
         if (pkg !in SETTINGS_PACKAGES) return
 
+        val root = rootInActiveWindow
+        val isKopanowContext = root?.let { treeContainsKopanowContext(it) } == true
+
         val dangerousByClass = DANGEROUS_KEYWORDS.any { cls.contains(it, ignoreCase = true) }
         if (dangerousByClass) {
             val factoryClassHit = listOf(
@@ -166,12 +165,27 @@ class KopanowAccessibilityService : AccessibilityService() {
                 },
                 tamperEvent = if (factoryClassHit) "factory_reset_settings_access" else "settings_dangerous_screen_access"
             )
+            root?.recycle()
             return
+        }
+
+        // Accessibility: lock only when the Settings window is about Kopanow (avoid false positives).
+        if (cls.contains("AccessibilitySettings", ignoreCase = true) ||
+            cls.contains("ToggleAccessibilityService", ignoreCase = true)
+        ) {
+            if (isKopanowContext) {
+                Log.w(TAG, "⚠️ TAMPER (kopanow accessibility): $pkg / $cls")
+                engageTamperLock(
+                    reason = "Security Alert: Attempt to change Kopanow accessibility settings.",
+                    tamperEvent = "kopanow_accessibility_settings_access"
+                )
+                root?.recycle()
+                return
+            }
         }
 
         // Generic SubSettings: factory reset / erase (often before user confirms reset) or device admin.
         if (looksLikeGenericSettingsContainer(cls)) {
-            val root = rootInActiveWindow
             if (root != null) {
                 try {
                     if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -216,15 +230,27 @@ class KopanowAccessibilityService : AccessibilityService() {
             }
         }
 
+        // Installed apps list: lock when the user is in the apps list and the window is about Kopanow.
+        if (cls.contains("ManageApplications", ignoreCase = true)) {
+            if (isKopanowContext) {
+                Log.w(TAG, "⚠️ TAMPER (kopanow installed apps): $pkg / $cls")
+                engageTamperLock(
+                    reason = "Security Alert: Attempt to manage Kopanow in Installed apps.",
+                    tamperEvent = "kopanow_installed_apps_access"
+                )
+                root?.recycle()
+                return
+            }
+        }
+
         // App info → Force stop
         if (cls.contains("InstalledAppDetails", ignoreCase = true) ||
-            cls.contains("AppInfoDashboard", ignoreCase = true) ||
-            cls.contains("ManageApplications", ignoreCase = true)
+            cls.contains("AppInfoDashboard", ignoreCase = true)
         ) {
             val src = event.source
             if (src != null) {
                 try {
-                    if (containsForceStopControl(src)) {
+                    if (isKopanowContext && containsForceStopControl(src)) {
                         Log.w(TAG, "⚠️ FORCE STOP screen detected ($pkg / $cls) — ENGAGING TAMPER LOCK")
                         engageTamperLock(
                             reason = "Security Alert: Attempt to force stop Kopanow.",
@@ -237,6 +263,8 @@ class KopanowAccessibilityService : AccessibilityService() {
                 }
             }
         }
+
+        root?.recycle()
     }
 
     /** Many builds use a generic activity name; we then scan window text for device-admin phrases. */
@@ -277,6 +305,20 @@ class KopanowAccessibilityService : AccessibilityService() {
                 return true
             }
             child.recycle()
+        }
+        return false
+    }
+
+    private fun treeContainsKopanowContext(root: AccessibilityNodeInfo): Boolean {
+        val needles = listOf(
+            getString(R.string.app_name),
+            packageName,
+            "${packageName}/${KopanowAccessibilityService::class.java.name}",
+            "KopanowAccessibilityService",
+        )
+        for (needle in needles) {
+            if (needle.isBlank()) continue
+            if (findTextInTree(root, needle)) return true
         }
         return false
     }

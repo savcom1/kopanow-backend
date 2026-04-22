@@ -110,6 +110,17 @@
                         android:textAppearance="@style/TextAppearance.Kopanow.Body"
                         android:textColor="@color/kopanow_text_primary" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_home_help_video"
+                        style="@style/Widget.Kopanow.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:text="@string/home_help_video_btn"
+                        app:icon="@android:drawable/ic_media_play"
+                        app:iconGravity="textStart"
+                        app:iconTint="@color/kopanow_teal" />
+
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"

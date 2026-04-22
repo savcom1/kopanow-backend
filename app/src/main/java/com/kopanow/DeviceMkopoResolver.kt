@@ -55,7 +55,8 @@ object DeviceMkopoResolver {
     ): Suggestion? {
         val canonical = resolveCanonicalBrands(manufacturer, brand, model)
         if (canonical.isEmpty()) return null
-        val hay = "$manufacturer $brand $model $device".lowercase()
+        val canonicalModel = canonicalizeDeviceModel(manufacturer, brand, model)
+        val hay = "$manufacturer $brand $model $device $canonicalModel".lowercase()
 
         // Collect all matches across canonical brands, then pick the safest (lowest MKOPO).
         val matches = mutableListOf<DeviceMkopoEntry>()
@@ -150,6 +151,34 @@ object DeviceMkopoResolver {
         }
 
         return out.toList()
+    }
+
+    /**
+     * Canonicalize noisy build model strings into a stable family name for MKOPO matching.
+     *
+     * Examples:
+     * - SM-A0556, SM-A0567 -> "Samsung A05"
+     * - SM-A145F          -> "Samsung A14"
+     */
+    @VisibleForTesting
+    internal fun canonicalizeDeviceModel(manufacturer: String, brand: String, model: String): String {
+        val mo = model.trim()
+        if (mo.isBlank()) return ""
+
+        val isSamsung =
+            mo.startsWith("SM-", ignoreCase = true) ||
+                manufacturer.contains("samsung", ignoreCase = true) ||
+                brand.contains("samsung", ignoreCase = true)
+        if (isSamsung) {
+            val m = Regex("(?i)^SM-([A-Z])(\\d{2}).*").find(mo)
+            if (m != null) {
+                val letter = m.groupValues[1].uppercase()
+                val two = m.groupValues[2]
+                return "Samsung $letter$two"
+            }
+        }
+
+        return ""
     }
 
     internal fun entryMatchesBuild(entry: DeviceMkopoEntry, hayLower: String): Boolean {
