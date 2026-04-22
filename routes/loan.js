@@ -11,6 +11,7 @@ const {
   computeRepaymentSchedule,
   createInvoicesForLoan,
 } = require('../helpers/loanInvoices');
+const { canonicalizeDeviceModel } = require('../helpers/deviceModel');
 
 function generateLoanId() {
   // Human-readable-ish unique loan id
@@ -55,6 +56,8 @@ router.post('/request', async (req, res) => {
     }
 
     const phoneNorm = normalizePhone(phone);
+    const canonicalModel =
+      canonicalizeDeviceModel({ manufacturer, brand, model: device_model }) || null;
 
     const rmQuick = repayment_months != null ? parseInt(repayment_months, 10) : NaN;
     const hasTerm =
@@ -190,6 +193,8 @@ router.post('/request', async (req, res) => {
       battery_pct: battery_pct ?? null,
       build_product: build_product || null,
       build_device: build_device || null,
+      device_model_raw: device_model || null,
+      device_model_canonical: canonicalModel,
       is_rooted: is_rooted ?? null
     };
     const { error: devUpsertErr } = await supabase
@@ -198,7 +203,7 @@ router.post('/request', async (req, res) => {
         borrower_id,
         loan_id,
         device_id: device_id || null,
-        device_model: device_model || null,
+        device_model: canonicalModel || device_model || null,
         mpesa_phone: phone,
         status: 'registered',
         dpc_active: false,

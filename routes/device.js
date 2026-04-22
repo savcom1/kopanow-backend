@@ -6,6 +6,7 @@ const { assertDeviceFreeForEnrollment, assertPhoneEligibleForNewLoan } = require
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
 const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
 const { normalizeTzPhone } = require('../helpers/lipaPayment');
+const { canonicalizeDeviceModel } = require('../helpers/deviceModel');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -177,6 +178,8 @@ router.post('/register', async (req, res) => {
         : {};
 
     const enrolledAtIso = enrolled_at ? new Date(enrolled_at).toISOString() : new Date().toISOString();
+    const canonicalModel =
+      canonicalizeDeviceModel({ manufacturer, brand, model: device_model }) || null;
 
     // Merge so loan_registration snapshot (build_product, etc.) is not wiped at MDM enroll
     const device_info = {
@@ -190,6 +193,8 @@ router.post('/register', async (req, res) => {
       screen_height_dp: screen_height_dp ?? prevInfo.screen_height_dp ?? null,
       battery_pct: battery_pct ?? prevInfo.battery_pct ?? null,
       is_rooted: is_rooted ?? prevInfo.is_rooted ?? false,
+      device_model_raw: device_model ?? prevInfo.device_model_raw ?? null,
+      device_model_canonical: canonicalModel ?? prevInfo.device_model_canonical ?? null,
       enrolled_at: enrolledAtIso,
       mdm_enrolled_at: enrolledAtIso
     };
@@ -203,7 +208,7 @@ router.post('/register', async (req, res) => {
         loan_id,
         device_id:    device_id    || null,
         fcm_token:    fcm_token    || null,
-        device_model: device_model || null,
+        device_model: canonicalModel || device_model || null,
         mpesa_phone:  mpesaPhoneNorm || null,
         device_info,
         status:       'registered',
