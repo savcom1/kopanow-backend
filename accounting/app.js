@@ -270,6 +270,36 @@ async function openLoan(loanId) {
     td.appendChild(amtInput);
     td.appendChild(dateInput);
     td.appendChild(btnFields);
+
+    // Delete invoice
+    const btnDelete = document.createElement('button');
+    btnDelete.type = 'button';
+    btnDelete.className = 'btn btn-danger';
+    btnDelete.textContent = 'Delete';
+    btnDelete.style.marginLeft = '10px';
+    btnDelete.addEventListener('click', async () => {
+      const ok = window.confirm(
+        `Delete invoice #${inv.installment_index} (amount ${inv.amount_due})?\n\nThis cannot be undone.`,
+      );
+      if (!ok) return;
+      const reason = window.prompt('Reason for deleting this invoice (required):');
+      if (!reason || !reason.trim()) {
+        toast('Reason required', true);
+        return;
+      }
+      const actor = window.prompt('Actor (optional):', '') || 'accounting';
+      try {
+        await apiFetch(`/loans/${encodeURIComponent(loanId)}/invoices/${inv.id}/delete`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason.trim(), actor }),
+        });
+        toast('Invoice deleted');
+        openLoan(loanId);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+    td.appendChild(btnDelete);
     tb.appendChild(tr);
   }
 }

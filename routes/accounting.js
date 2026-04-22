@@ -543,6 +543,46 @@ router.post('/loans/:loanId/invoices/:invoiceId/adjust-fields', async (req, res)
   }
 });
 
+// ── POST /api/accounting/loans/:loanId/invoices/:invoiceId/delete ─────────────
+router.post('/loans/:loanId/invoices/:invoiceId/delete', async (req, res) => {
+  try {
+    const { loanId, invoiceId } = req.params;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+
+    const { data: inv, error: iErr } = await supabase
+      .from('loan_invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (iErr) throw iErr;
+    if (!inv) return res.status(404).json({ success: false, error: 'Invoice not found for this loan' });
+
+    const before = { ...inv };
+    const { error: dErr } = await supabase.from('loan_invoices').delete().eq('id', inv.id);
+    if (dErr) throw dErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan_invoice',
+      entity_id: invoiceId,
+      action: 'delete_invoice',
+      before,
+      after: null,
+      reason,
+    });
+
+    return res.json({ success: true, deleted: true });
+  } catch (err) {
+    console.error('[accounting:invoice-delete]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── POST /api/accounting/loans/:loanId/adjust-outstanding ────────────────────
 router.post('/loans/:loanId/adjust-outstanding', async (req, res) => {
   try {
