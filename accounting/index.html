@@ -134,12 +134,7 @@
 
     <section class="view" id="view-cash-disburse">
       <div class="toolbar">
-        <p class="muted" style="flex:1;margin:0">Loans waiting for cashier confirmation that principal was sent to the borrower. Confirmed loans count toward portfolio reporting (PAR, aging, etc.).</p>
-        <div class="chip-row" role="tablist" aria-label="Pending disbursement stage">
-          <button type="button" class="chip active" data-disburse-stage="ready" role="tab" aria-selected="true">Customer</button>
-          <button type="button" class="chip" data-disburse-stage="not_ready" role="tab" aria-selected="false">Applicant</button>
-          <button type="button" class="chip" data-disburse-stage="all" role="tab" aria-selected="false">All pending</button>
-        </div>
+        <p class="muted" style="flex:1;margin:0">Customers only (phone setup completed once). Loans waiting for cashier confirmation that principal was sent to the borrower. Confirmed loans count toward portfolio reporting (PAR, aging, etc.).</p>
         <button type="button" class="btn btn-secondary" id="btn-pending-disburse-refresh">Refresh</button>
       </div>
       <div class="table-wrap scroll">
@@ -148,7 +143,6 @@
             <tr>
               <th>Loan ID</th>
               <th>Borrower</th>
-              <th>Phone setup</th>
               <th>Principal</th>
               <th>Created</th>
               <th></th>

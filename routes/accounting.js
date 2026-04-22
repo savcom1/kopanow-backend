@@ -259,8 +259,7 @@ router.get('/loans', async (req, res) => {
 // ── GET /api/accounting/loans/pending-disbursement (before :loanId route) ───
 router.get('/loans/pending-disbursement', async (req, res) => {
   try {
-    const stageRaw = req.query.stage != null ? String(req.query.stage).toLowerCase() : 'all';
-    const stage = stageRaw === 'ready' || stageRaw === 'not_ready' ? stageRaw : 'all';
+    // Cash disburse queue: customers only (sticky protection completed). Query `stage` is ignored.
 
     const { data: loans, error } = await supabase
       .from('loans')
@@ -310,18 +309,13 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       };
     });
 
-    const filtered =
-      stage === 'all'
-        ? enriched
-        : enriched.filter((l) =>
-            stage === 'ready' ? l.is_customer === true : l.is_customer !== true,
-          );
+    const customersOnly = enriched.filter((l) => l.is_customer === true);
 
     return res.json({
       success: true,
-      stage,
-      loans: filtered,
-      count: filtered.length,
+      stage: 'customers',
+      loans: customersOnly,
+      count: customersOnly.length,
     });
   } catch (err) {
     console.error('[accounting:pending-disbursement]', err.message);

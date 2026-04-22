@@ -68,7 +68,6 @@ function setView(name) {
 let selectedBorrowerId = null;
 let selectedLoanId = null;
 let pendingDisburseLoanId = null;
-let pendingDisburseStage = 'ready';
 let currentLoanDetail = null;
 
 async function loadCustomers() {
@@ -376,9 +375,7 @@ $('#btn-sync-outstanding').addEventListener('click', async () => {
 });
 
 async function loadPendingDisbursement() {
-  const qs = new URLSearchParams();
-  qs.set('stage', pendingDisburseStage || 'all');
-  const data = await apiFetch(`/loans/pending-disbursement?${qs.toString()}`);
+  const data = await apiFetch('/loans/pending-disbursement');
   const tb = $('#table-pending-disburse tbody');
   tb.innerHTML = '';
   for (const l of data.loans || []) {
@@ -386,11 +383,7 @@ async function loadPendingDisbursement() {
     const principal =
       l.principal_amount != null ? Number(l.principal_amount).toLocaleString() : '—';
     const who = l.borrower_full_name || l.borrower_id || '—';
-    const isCustomer = l.is_customer === true;
-    const badge = isCustomer
-      ? `<span class="badge ok">Customer</span>`
-      : `<span class="badge bad">Applicant</span>`;
-    tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(who)}</td><td>${badge}</td><td>${escapeHtml(principal)}</td><td>${fmtDate(l.created_at)}</td><td><button type="button" class="btn btn-primary" data-confirm-disburse="1">Confirm</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(who)}</td><td>${escapeHtml(principal)}</td><td>${fmtDate(l.created_at)}</td><td><button type="button" class="btn btn-primary" data-confirm-disburse="1">Confirm</button></td>`;
     tr.dataset.loanId = l.loan_id;
     tb.appendChild(tr);
   }
@@ -579,29 +572,6 @@ function wireNav() {
   });
 }
 
-function wirePendingDisbursementStageChips() {
-  const chips = $$('[data-disburse-stage]');
-  if (!chips.length) return;
-
-  const setActive = (stage) => {
-    pendingDisburseStage = stage || 'all';
-    chips.forEach((c) => {
-      const active = (c.dataset.disburseStage || '') === pendingDisburseStage;
-      c.classList.toggle('active', active);
-      c.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-  };
-
-  chips.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setActive(btn.dataset.disburseStage || 'all');
-      loadPendingDisbursement().catch((e) => toast(e.message, true));
-    });
-  });
-
-  setActive(pendingDisburseStage);
-}
-
 $('#table-pending-disburse').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-confirm-disburse]');
   if (!btn) return;
@@ -723,7 +693,6 @@ $('#btn-queue-refs').addEventListener('click', () => loadQueueRefs().catch((e) =
 $('#btn-audit-refresh').addEventListener('click', () => loadAudit().catch((e) => toast(e.message, true)));
 
 wireNav();
-wirePendingDisbursementStageChips();
 
 // Default date range: last 30 days
 (function initDates() {
