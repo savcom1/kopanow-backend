@@ -352,6 +352,43 @@ router.post('/heartbeat', async (req, res) => {
 
     await supabase.from('devices').update(updates).eq('id', device.id);
 
+    if (updates.protection_first_completed_at) {
+      const [{ data: loanRow, error: loanPeekErr }, { data: regRow }] = await Promise.all([
+        supabase
+          .from('loans')
+          .select('cash_disbursement_confirmed_at, repaid_at, outstanding_amount, principal_amount')
+          .eq('loan_id', loan_id)
+          .maybeSingle(),
+        supabase.from('registrations').select('phone').eq('borrower_id', borrower_id).maybeSingle(),
+      ]);
+      const phoneRaw =
+        (regRow?.phone && String(regRow.phone).trim()) ||
+        (device.mpesa_phone && String(device.mpesa_phone).trim()) ||
+        '';
+      const phone = phoneRaw ? phoneRaw : null;
+      const principalAmount =
+        loanRow?.principal_amount != null ? Number(loanRow.principal_amount) : null;
+      if (!loanPeekErr && loanRow &&
+          !loanRow.cash_disbursement_confirmed_at &&
+          !loanRow.repaid_at &&
+          Number(loanRow.outstanding_amount) > 0) {
+        const { error: qErr } = await supabase
+          .from('cash_disbursement_queue')
+          .upsert(
+            {
+              loan_id,
+              borrower_id,
+              enqueued_at: receivedAt,
+              status: 'pending',
+              phone,
+              principal_amount: principalAmount,
+            },
+            { onConflict: 'loan_id', ignoreDuplicates: true },
+          );
+        if (qErr) console.error('[heartbeat:cash_disbursement_queue]', qErr.message);
+      }
+    }
+
     if (!device.device_id && device_id) {
       await supabase.from('devices').update({ device_id }).eq('id', device.id);
     }

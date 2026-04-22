@@ -83,6 +83,31 @@ CREATE TRIGGER trg_loans_updated_at
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
+-- ── Cash disbursement queue (accounting cashier list) ─────
+-- Enqueued when devices.protection_first_completed_at is first set (heartbeat); completed on cash confirm.
+-- phone / principal_amount are snapshots at enqueue (registration phone, else device mpesa_phone; loans.principal_amount).
+CREATE TABLE IF NOT EXISTS cash_disbursement_queue (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_id            TEXT NOT NULL UNIQUE,
+  borrower_id        TEXT NOT NULL,
+  enqueued_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status             TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'completed')),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  phone              TEXT,
+  principal_amount   NUMERIC
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_disbursement_queue_pending
+  ON cash_disbursement_queue (enqueued_at)
+  WHERE status = 'pending';
+
+DROP TRIGGER IF EXISTS trg_cash_disbursement_queue_updated_at ON cash_disbursement_queue;
+CREATE TRIGGER trg_cash_disbursement_queue_updated_at
+  BEFORE UPDATE ON cash_disbursement_queue
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
 -- ── Devices (one row per borrower_id + loan_id) ───────────
 -- PIN columns: add_passcode_columns.sql / add_system_pin_column.sql (also included here)
 CREATE TABLE IF NOT EXISTS devices (
@@ -111,7 +136,7 @@ CREATE TABLE IF NOT EXISTS devices (
   last_heartbeat           JSONB,
   -- Snapshot from POST /device/heartbeat (mdm_compliance); also embedded in last_heartbeat for history
   mdm_compliance           JSONB,
-  -- Sticky: first heartbeat time when mdm_compliance.all_required_ok was true (admin Applicant → Customer)
+  -- Sticky: first heartbeat time when mdm_compliance.all_required_ok was true (cash disburse queue enqueue)
   protection_first_completed_at TIMESTAMPTZ,
   device_info              JSONB,
   tamper_events            JSONB       NOT NULL DEFAULT '[]',

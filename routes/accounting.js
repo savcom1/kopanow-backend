@@ -302,30 +302,47 @@ router.get('/loans', async (req, res) => {
 // ── GET /api/accounting/loans/pending-disbursement (before :loanId route) ───
 router.get('/loans/pending-disbursement', async (req, res) => {
   try {
-    // Cash disburse queue: customers only (sticky protection completed). Query `stage` is ignored.
+    const { data: queueRows, error: qErr } = await supabase
+      .from('cash_disbursement_queue')
+      .select('loan_id, borrower_id, enqueued_at, phone, principal_amount')
+      .eq('status', 'pending')
+      .order('enqueued_at', { ascending: true })
+      .limit(500);
+    if (qErr) throw qErr;
+
+    const loanIds = [...new Set((queueRows || []).map((r) => r.loan_id).filter(Boolean))];
+    if (!loanIds.length) {
+      return res.json({ success: true, stage: 'customers', loans: [], count: 0 });
+    }
 
     const { data: loans, error } = await supabase
       .from('loans')
       .select('*')
+      .in('loan_id', loanIds)
       .is('cash_disbursement_confirmed_at', null)
       .is('repaid_at', null)
-      .gt('outstanding_amount', 0)
-      .order('created_at', { ascending: false })
-      .limit(500);
+      .gt('outstanding_amount', 0);
     if (error) throw error;
 
-    const loanIds = [...new Set((loans || []).map((l) => l.loan_id).filter(Boolean))];
+    const loanById = Object.fromEntries((loans || []).map((l) => [l.loan_id, l]));
+    const orderedLoans = [];
+    for (const q of queueRows || []) {
+      const l = loanById[q.loan_id];
+      if (l) orderedLoans.push({ loan: l, queue: q });
+    }
+
+    const outLoanIds = orderedLoans.map((x) => x.loan.loan_id);
     let deviceByLoan = {};
-    if (loanIds.length) {
+    if (outLoanIds.length) {
       const { data: devices, error: dErr } = await supabase
         .from('devices')
         .select('loan_id, mdm_compliance, protection_first_completed_at')
-        .in('loan_id', loanIds);
+        .in('loan_id', outLoanIds);
       if (dErr) throw dErr;
       deviceByLoan = Object.fromEntries((devices || []).map((d) => [d.loan_id, d]));
     }
 
-    const borrowerIds = [...new Set((loans || []).map((l) => l.borrower_id).filter(Boolean))];
+    const borrowerIds = [...new Set(orderedLoans.map((x) => x.loan.borrower_id).filter(Boolean))];
     let nameByBorrower = {};
     if (borrowerIds.length) {
       const { data: regs } = await supabase
@@ -335,7 +352,7 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       nameByBorrower = Object.fromEntries((regs || []).map((r) => [r.borrower_id, r]));
     }
 
-    const enriched = (loans || []).map((l) => {
+    const enriched = orderedLoans.map(({ loan: l, queue: q }) => {
       const dev = deviceByLoan[l.loan_id] || null;
       const mdm = dev?.mdm_compliance && typeof dev.mdm_compliance === 'object' ? dev.mdm_compliance : null;
       const allOk = mdm?.all_required_ok === true;
@@ -345,6 +362,9 @@ router.get('/loans/pending-disbursement', async (req, res) => {
         ...l,
         borrower_full_name: nameByBorrower[l.borrower_id]?.full_name || null,
         borrower_phone: nameByBorrower[l.borrower_id]?.phone || null,
+        queue_phone: q.phone != null ? String(q.phone) : null,
+        queue_principal_amount: q.principal_amount != null ? Number(q.principal_amount) : null,
+        queue_enqueued_at: q.enqueued_at || null,
         is_customer: !!dev?.protection_first_completed_at,
         protection_all_required_ok: allOk,
         protection_ok_count: okCount,
@@ -352,13 +372,11 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       };
     });
 
-    const customersOnly = enriched.filter((l) => l.is_customer === true);
-
     return res.json({
       success: true,
       stage: 'customers',
-      loans: customersOnly,
-      count: customersOnly.length,
+      loans: enriched,
+      count: enriched.length,
     });
   } catch (err) {
     console.error('[accounting:pending-disbursement]', err.message);
@@ -385,6 +403,11 @@ router.post('/loans/:loanId/confirm-cash-disbursement', async (req, res) => {
     if (!before) return res.status(404).json({ success: false, error: 'Loan not found' });
 
     if (before.cash_disbursement_confirmed_at) {
+      await supabase
+        .from('cash_disbursement_queue')
+        .update({ status: 'completed', updated_at: new Date().toISOString() })
+        .eq('loan_id', loanId)
+        .eq('status', 'pending');
       return res.json({ success: true, loan: before, idempotent: true });
     }
 
@@ -414,6 +437,12 @@ router.post('/loans/:loanId/confirm-cash-disbursement', async (req, res) => {
       after,
       reason: notes || 'Cash disbursement confirmed (principal sent to borrower)',
     });
+
+    await supabase
+      .from('cash_disbursement_queue')
+      .update({ status: 'completed', updated_at: ts })
+      .eq('loan_id', loanId)
+      .eq('status', 'pending');
 
     return res.json({ success: true, loan: after });
   } catch (err) {
