@@ -112,6 +112,7 @@ router.get('/devices', async (req, res) => {
 
     const enriched = devices.map(d => ({
       ...d,
+      is_customer: !!d.protection_first_completed_at,
       borrower_full_name: nameByBorrower[d.borrower_id] || null,
       loan: loanMap[d.loan_id]
         ? {
@@ -258,7 +259,7 @@ router.get('/stage-summary', async (req, res) => {
         .from('devices')
         .select('loan_id')
         .in('loan_id', pendingLoanIds)
-        .eq('mdm_compliance->>all_required_ok', 'true')
+        .not('protection_first_completed_at', 'is', null)
         .limit(50000);
       if (rErr) throw rErr;
       readyLoanIds = new Set((readyRows || []).map((r) => r.loan_id).filter(Boolean));
@@ -297,22 +298,26 @@ router.get('/loans', async (req, res) => {
     if (disb === 'pending') query = query.is('cash_disbursement_confirmed_at', null);
     else if (disb === 'confirmed') query = query.not('cash_disbursement_confirmed_at', 'is', null);
 
-    // Protection readiness filter (from devices.mdm_compliance.all_required_ok)
+    // Protection filter: sticky "customer" = devices.protection_first_completed_at set (not current MDM snapshot)
     const prot = protection != null ? String(protection).toLowerCase() : 'all';
-    if (prot === 'complete' || prot === 'incomplete') {
-      const { data: readyRows, error: readyErr } = await supabase
+    if (
+      prot === 'customers' || prot === 'applicants' ||
+      prot === 'complete' || prot === 'incomplete'
+    ) {
+      const { data: devRows, error: readyErr } = await supabase
         .from('devices')
         .select('loan_id')
-        .eq('mdm_compliance->>all_required_ok', 'true')
+        .not('protection_first_completed_at', 'is', null)
         .limit(50000);
       if (readyErr) throw readyErr;
-      const readyLoanIds = [...new Set((readyRows || []).map((r) => r.loan_id).filter(Boolean))];
-      if (prot === 'complete') {
-        if (readyLoanIds.length) query = query.in('loan_id', readyLoanIds);
+      const customerLoanIds = [...new Set((devRows || []).map((r) => r.loan_id).filter(Boolean))];
+      const wantCustomers = prot === 'customers' || prot === 'complete';
+      if (wantCustomers) {
+        if (customerLoanIds.length) query = query.in('loan_id', customerLoanIds);
         else query = query.eq('loan_id', '__no_such_loan__');
       } else {
-        if (readyLoanIds.length) {
-          query = query.not('loan_id', 'in', `(${quoteBorrowerIdsForInFilter(readyLoanIds).join(',')})`);
+        if (customerLoanIds.length) {
+          query = query.not('loan_id', 'in', `(${quoteBorrowerIdsForInFilter(customerLoanIds).join(',')})`);
         }
       }
     }
@@ -362,12 +367,12 @@ router.get('/loans', async (req, res) => {
       }
     }
 
-    // Join protection readiness from devices (treat missing/null as not ready)
+    // Join devices: is_customer = sticky protection_first_completed_at; protection_all_required_ok = current MDM snapshot
     let deviceByLoan = {};
     if (loanIdList.length) {
       const { data: devices, error: dErr } = await supabase
         .from('devices')
-        .select('loan_id, mdm_compliance')
+        .select('loan_id, mdm_compliance, protection_first_completed_at')
         .in('loan_id', loanIdList);
       if (dErr) throw dErr;
       deviceByLoan = Object.fromEntries((devices || []).map((d) => [d.loan_id, d]));
@@ -375,17 +380,19 @@ router.get('/loans', async (req, res) => {
 
     return res.json({
       success: true,
-      loans: (loans || []).map((l) => ({
+      loans: (loans || []).map((l) => {
+        const dev = deviceByLoan[l.loan_id];
+        const mdm = dev?.mdm_compliance;
+        return {
+        is_customer: !!dev?.protection_first_completed_at,
         protection_all_required_ok:
-          (deviceByLoan[l.loan_id]?.mdm_compliance &&
-            typeof deviceByLoan[l.loan_id].mdm_compliance === 'object' &&
-            deviceByLoan[l.loan_id].mdm_compliance.all_required_ok === true) ||
-          false,
+          (mdm && typeof mdm === 'object' && mdm.all_required_ok === true) || false,
         ...l,
         borrower_full_name: loanNameByBorrower[l.borrower_id] || null,
         days_overdue: daysOverdue(l.next_due_date),
         invoice_summary: summarizeInvoiceRows(invByLoan[l.loan_id] || []),
-      })),
+      };
+      }),
       total: count || 0,
       page: parseInt(page),
     });

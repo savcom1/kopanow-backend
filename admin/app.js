@@ -306,7 +306,7 @@ async function loadDevices() {
 
   const tbody = $('#devices-tbody');
   if (!data.devices?.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="text-muted" style="text-align:center;padding:32px">No devices found.</td></tr>';
     return;
   }
 
@@ -331,6 +331,11 @@ async function loadDevices() {
       <td>${statusBadge(d.status)}</td>
       <td>${d.dpc_active ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</td>
       <td style="font-size:12px;white-space:nowrap">${mdmComplianceCell(d.mdm_compliance)}</td>
+      <td style="font-size:12px;white-space:nowrap">${
+        d.is_customer
+          ? '<span style="color:var(--green);font-weight:600">Customer</span>'
+          : '<span style="color:var(--amber);font-weight:600">Applicant</span>'
+      }</td>
       <td class="text-muted">${d.last_seen ? timeAgo(d.last_seen) : '<span style="color:var(--amber)">New</span>'}</td>
       <td>${d.loan?.days_overdue > 0 ? `<span style="color:var(--red)">${d.loan.days_overdue}d</span>` : '—'}</td>
       <td>${d.loan ? `TSh ${Number(d.loan.outstanding_amount).toLocaleString()}` : '—'}</td>
@@ -418,9 +423,9 @@ async function loadLoans() {
       ? `<div><strong>${esc(bName)}</strong></div><div class="mono text-muted" style="font-size:11px">${esc(l.borrower_id)}</div>`
       : `<span class="mono">${esc(l.borrower_id)}</span>`;
     const setup =
-      l.protection_all_required_ok === true
-        ? `<span style="color:var(--green);font-weight:600">Ready</span>`
-        : `<span style="color:var(--amber);font-weight:600">Not ready</span>`;
+      l.is_customer === true
+        ? `<span style="color:var(--green);font-weight:600">Customer</span>`
+        : `<span style="color:var(--amber);font-weight:600">Applicant</span>`;
     return `
     <tr>
       <td class="mono">${esc(l.loan_id)}</td>

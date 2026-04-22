@@ -277,7 +277,7 @@ router.get('/loans/pending-disbursement', async (req, res) => {
     if (loanIds.length) {
       const { data: devices, error: dErr } = await supabase
         .from('devices')
-        .select('loan_id, mdm_compliance')
+        .select('loan_id, mdm_compliance, protection_first_completed_at')
         .in('loan_id', loanIds);
       if (dErr) throw dErr;
       deviceByLoan = Object.fromEntries((devices || []).map((d) => [d.loan_id, d]));
@@ -303,6 +303,7 @@ router.get('/loans/pending-disbursement', async (req, res) => {
         ...l,
         borrower_full_name: nameByBorrower[l.borrower_id]?.full_name || null,
         borrower_phone: nameByBorrower[l.borrower_id]?.phone || null,
+        is_customer: !!dev?.protection_first_completed_at,
         protection_all_required_ok: allOk,
         protection_ok_count: okCount,
         protection_required_count: requiredCount,
@@ -313,7 +314,7 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       stage === 'all'
         ? enriched
         : enriched.filter((l) =>
-            stage === 'ready' ? l.protection_all_required_ok === true : l.protection_all_required_ok !== true,
+            stage === 'ready' ? l.is_customer === true : l.is_customer !== true,
           );
 
     return res.json({

@@ -286,6 +286,14 @@ router.post('/heartbeat', async (req, res) => {
     if (mdmCompliance && typeof mdmCompliance === 'object') {
       updates.mdm_compliance = mdmCompliance;
     }
+    if (
+      !device.protection_first_completed_at &&
+      mdmCompliance &&
+      typeof mdmCompliance === 'object' &&
+      mdmCompliance.all_required_ok === true
+    ) {
+      updates.protection_first_completed_at = receivedAt;
+    }
 
     if (device.device_id && device_id && device.device_id !== device_id) {
       updates.is_locked = true;

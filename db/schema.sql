@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS devices (
   last_heartbeat           JSONB,
   -- Snapshot from POST /device/heartbeat (mdm_compliance); also embedded in last_heartbeat for history
   mdm_compliance           JSONB,
+  -- Sticky: first heartbeat time when mdm_compliance.all_required_ok was true (admin Applicant → Customer)
+  protection_first_completed_at TIMESTAMPTZ,
   device_info              JSONB,
   tamper_events            JSONB       NOT NULL DEFAULT '[]',
 
@@ -129,6 +131,9 @@ CREATE INDEX IF NOT EXISTS idx_devices_status       ON devices (status);
 CREATE INDEX IF NOT EXISTS idx_devices_is_locked      ON devices (is_locked);
 CREATE INDEX IF NOT EXISTS idx_devices_last_seen    ON devices (last_seen);
 CREATE INDEX IF NOT EXISTS idx_devices_device_id    ON devices (device_id);
+CREATE INDEX IF NOT EXISTS idx_devices_protection_first_completed_at
+  ON devices (protection_first_completed_at)
+  WHERE protection_first_completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_devices_passcode_active
   ON devices (passcode_active)
   WHERE passcode_active = TRUE;

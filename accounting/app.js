@@ -386,8 +386,10 @@ async function loadPendingDisbursement() {
     const principal =
       l.principal_amount != null ? Number(l.principal_amount).toLocaleString() : '—';
     const who = l.borrower_full_name || l.borrower_id || '—';
-    const ready = l.protection_all_required_ok === true;
-    const badge = ready ? `<span class="badge ok">Ready</span>` : `<span class="badge bad">Not ready</span>`;
+    const isCustomer = l.is_customer === true;
+    const badge = isCustomer
+      ? `<span class="badge ok">Customer</span>`
+      : `<span class="badge bad">Applicant</span>`;
     tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(who)}</td><td>${badge}</td><td>${escapeHtml(principal)}</td><td>${fmtDate(l.created_at)}</td><td><button type="button" class="btn btn-primary" data-confirm-disburse="1">Confirm</button></td>`;
     tr.dataset.loanId = l.loan_id;
     tb.appendChild(tr);

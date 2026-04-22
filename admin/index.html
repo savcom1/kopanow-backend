@@ -101,11 +101,11 @@
           <div class="kpi-hint text-muted" id="kpi-disburse-sub" style="font-size:11px;margin-top:4px"></div>
         </div>
         <div class="kpi-card kpi-green">
-          <div class="kpi-label">Pending cash-out (Ready)</div>
+          <div class="kpi-label">Pending cash-out (Customer)</div>
           <div class="kpi-value" id="kpi-disburse-ready">—</div>
         </div>
         <div class="kpi-card kpi-amber">
-          <div class="kpi-label">Pending cash-out (Needs setup)</div>
+          <div class="kpi-label">Pending cash-out (Applicant)</div>
           <div class="kpi-value" id="kpi-disburse-not-ready">—</div>
         </div>
       </div>
@@ -139,7 +139,7 @@
           <thead>
             <tr>
               <th>Borrower</th><th>Loan ID</th><th>Device ID</th><th>Model</th>
-              <th>Status</th><th>DPC</th><th>MDM</th><th>Last Seen</th>
+              <th>Status</th><th>DPC</th><th>MDM</th><th>Protection</th><th>Last Seen</th>
               <th>Overdue</th><th>Outstanding</th><th>Installments</th><th>Actions</th>
             </tr>
           </thead>
@@ -170,8 +170,8 @@
         <button class="chip" data-disbursement="confirmed" type="button">Cash sent</button>
         <span class="text-muted" style="margin-left:12px;font-size:12px">Phone setup:</span>
         <button class="chip active" data-protection="all" type="button">All</button>
-        <button class="chip" data-protection="complete" type="button">Protection complete</button>
-        <button class="chip" data-protection="incomplete" type="button">Protection incomplete</button>
+        <button class="chip" data-protection="applicants" type="button">Applicants</button>
+        <button class="chip" data-protection="customers" type="button">Customers</button>
       </div>
       <div class="table-wrap">
         <table class="data-table" id="loans-table">
@@ -179,8 +179,8 @@
             <tr>
               <th>Loan ID</th><th>Borrower</th><th>Principal</th>
               <th>Total / Weekly</th><th>Outstanding</th><th>Next Due</th>
-              <th>Overdue</th><th>Invoices</th><th>Cash out</th><th>Device Status</th>
-              <th>Phone setup</th><th>Device Status</th>
+              <th>Overdue</th><th>Invoices</th><th>Cash out</th>
+              <th>Phone setup</th><th>Device status</th>
             </tr>
           </thead>
           <tbody id="loans-tbody"></tbody>
