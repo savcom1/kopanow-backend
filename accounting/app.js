@@ -69,6 +69,7 @@ let selectedBorrowerId = null;
 let selectedLoanId = null;
 let pendingDisburseLoanId = null;
 let pendingDisburseStage = 'ready';
+let currentLoanDetail = null;
 
 async function loadCustomers() {
   const q = $('#customer-search').value.trim();
@@ -163,13 +164,21 @@ function fmtDate(iso) {
 async function openLoan(loanId) {
   selectedLoanId = loanId;
   const data = await apiFetch(`/loans/${encodeURIComponent(loanId)}`);
+  currentLoanDetail = data;
   $('#loan-detail').hidden = false;
   $('#loan-detail-title').textContent = loanId;
-  $('#loan-detail-meta').textContent = `Borrower: ${data.registration?.full_name || data.loan.borrower_id} · Outstanding: ${data.loan.outstanding_amount}`;
+  $('#loan-detail-meta').textContent =
+    `Borrower: ${data.registration?.full_name || data.loan.borrower_id}` +
+    ` · Principal: ${data.loan.principal_amount ?? '—'}` +
+    ` · Outstanding: ${data.loan.outstanding_amount ?? '—'}`;
   const fo = $('#form-outstanding');
   fo.outstanding_amount.value = data.loan.outstanding_amount ?? '';
   fo.reason.value = '';
   fo.actor.value = '';
+  const fp = $('#form-principal');
+  fp.principal_amount.value = data.loan.principal_amount ?? '';
+  fp.reason.value = '';
+  fp.actor.value = '';
 
   const tb = $('#table-invoices tbody');
   tb.innerHTML = '';
@@ -209,6 +218,58 @@ async function openLoan(loanId) {
     });
     td.appendChild(sel);
     td.appendChild(btn);
+
+    // Extra invoice field edits (amount_due + due_date)
+    const amtInput = document.createElement('input');
+    amtInput.type = 'number';
+    amtInput.step = '0.01';
+    amtInput.min = '0';
+    amtInput.value = inv.amount_due ?? '';
+    amtInput.style.width = '110px';
+    amtInput.style.marginLeft = '10px';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = inv.due_date ? new Date(inv.due_date).toISOString().slice(0, 10) : '';
+    dateInput.style.width = '150px';
+    dateInput.style.marginLeft = '10px';
+
+    const btnFields = document.createElement('button');
+    btnFields.type = 'button';
+    btnFields.className = 'btn btn-secondary';
+    btnFields.textContent = 'Apply fields';
+    btnFields.style.marginLeft = '10px';
+    btnFields.addEventListener('click', async () => {
+      const reason = window.prompt('Reason for invoice field change (required):');
+      if (!reason || !reason.trim()) {
+        toast('Reason required', true);
+        return;
+      }
+      const actor = window.prompt('Actor (optional):', '') || 'accounting';
+      const body = { reason: reason.trim(), actor };
+      const amt = amtInput.value;
+      const due = dateInput.value;
+      if (amt !== '' && amt != null) body.amount_due = Number(amt);
+      if (due) body.due_date = due;
+      if (body.amount_due === undefined && body.due_date === undefined) {
+        toast('Change amount or due date first', true);
+        return;
+      }
+      try {
+        await apiFetch(`/loans/${encodeURIComponent(loanId)}/invoices/${inv.id}/adjust-fields`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        toast('Invoice fields updated');
+        openLoan(loanId);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+
+    td.appendChild(amtInput);
+    td.appendChild(dateInput);
+    td.appendChild(btnFields);
     tb.appendChild(tr);
   }
 }
@@ -227,6 +288,57 @@ $('#form-outstanding').addEventListener('submit', async (e) => {
       }),
     });
     toast('Outstanding updated');
+    openLoan(selectedLoanId);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#form-principal').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedLoanId) return;
+  const f = e.target;
+  try {
+    await apiFetch(`/loans/${encodeURIComponent(selectedLoanId)}/adjust-principal`, {
+      method: 'POST',
+      body: JSON.stringify({
+        principal_amount: Number(f.principal_amount.value),
+        reason: f.reason.value.trim(),
+        actor: f.actor.value.trim() || 'accounting',
+      }),
+    });
+    toast('Principal updated');
+    openLoan(selectedLoanId);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#btn-sync-outstanding').addEventListener('click', async () => {
+  if (!selectedLoanId) return;
+  const data = currentLoanDetail;
+  if (!data?.invoices?.length) {
+    toast('No invoices loaded for this loan', true);
+    return;
+  }
+  const unpaid = (data.invoices || []).filter((i) => i.status === 'pending' || i.status === 'overdue');
+  const sum = unpaid.reduce((acc, i) => acc + (Number(i.amount_due) || 0), 0);
+  const reason = window.prompt('Reason for outstanding sync (required):', 'Sync outstanding to sum(unpaid invoices)') || '';
+  if (!reason.trim()) {
+    toast('Reason required', true);
+    return;
+  }
+  const actor = window.prompt('Actor (optional):', '') || 'accounting';
+  try {
+    await apiFetch(`/loans/${encodeURIComponent(selectedLoanId)}/adjust-outstanding`, {
+      method: 'POST',
+      body: JSON.stringify({
+        outstanding_amount: sum,
+        reason: reason.trim(),
+        actor,
+      }),
+    });
+    toast('Outstanding synced to unpaid invoices');
     openLoan(selectedLoanId);
   } catch (err) {
     toast(err.message, true);

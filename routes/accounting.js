@@ -475,6 +475,74 @@ router.post('/loans/:loanId/invoices/:invoiceId/adjust', async (req, res) => {
   }
 });
 
+// ── POST /api/accounting/loans/:loanId/invoices/:invoiceId/adjust-fields ──────
+router.post('/loans/:loanId/invoices/:invoiceId/adjust-fields', async (req, res) => {
+  try {
+    const { loanId, invoiceId } = req.params;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+
+    const patch = {};
+    if (req.body?.amount_due !== undefined) {
+      const raw = req.body?.amount_due;
+      if (raw === null || Number.isNaN(Number(raw))) {
+        return res.status(400).json({ success: false, error: 'amount_due must be a number' });
+      }
+      const v = Number(raw);
+      if (v < 0) return res.status(400).json({ success: false, error: 'amount_due must be >= 0' });
+      patch.amount_due = v;
+    }
+    if (req.body?.due_date !== undefined) {
+      const raw = req.body?.due_date;
+      const d = new Date(raw);
+      if (!raw || Number.isNaN(d.getTime())) {
+        return res.status(400).json({ success: false, error: 'due_date must be a valid date string' });
+      }
+      patch.due_date = d.toISOString();
+    }
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ success: false, error: 'Provide amount_due and/or due_date' });
+    }
+    patch.updated_at = new Date().toISOString();
+
+    const { data: inv, error: iErr } = await supabase
+      .from('loan_invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (iErr) throw iErr;
+    if (!inv) return res.status(404).json({ success: false, error: 'Invoice not found for this loan' });
+
+    const before = { ...inv };
+    const { data: after, error: uErr } = await supabase
+      .from('loan_invoices')
+      .update(patch)
+      .eq('id', inv.id)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan_invoice',
+      entity_id: invoiceId,
+      action: 'adjust_invoice_fields',
+      before,
+      after,
+      reason,
+    });
+
+    return res.json({ success: true, invoice: after });
+  } catch (err) {
+    console.error('[accounting:invoice-adjust-fields]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── POST /api/accounting/loans/:loanId/adjust-outstanding ────────────────────
 router.post('/loans/:loanId/adjust-outstanding', async (req, res) => {
   try {
@@ -525,6 +593,127 @@ router.post('/loans/:loanId/adjust-outstanding', async (req, res) => {
     return res.json({ success: true, loan: after });
   } catch (err) {
     console.error('[accounting:outstanding-adjust]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ── POST /api/accounting/loans/:loanId/adjust-principal ───────────────────────
+router.post('/loans/:loanId/adjust-principal', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+    const raw = req.body?.principal_amount;
+    if (raw === undefined || raw === null || Number.isNaN(Number(raw))) {
+      return res.status(400).json({ success: false, error: 'principal_amount (number) is required' });
+    }
+    const principal_amount = Number(raw);
+    if (principal_amount < 0) {
+      return res.status(400).json({ success: false, error: 'principal_amount must be >= 0' });
+    }
+
+    const { data: before, error: bErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (bErr) throw bErr;
+    if (!before) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    const { data: after, error: uErr } = await supabase
+      .from('loans')
+      .update({
+        principal_amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('loan_id', loanId)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan',
+      entity_id: loanId,
+      action: 'adjust_principal',
+      before,
+      after,
+      reason,
+    });
+
+    return res.json({ success: true, loan: after });
+  } catch (err) {
+    console.error('[accounting:principal-adjust]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+// ── POST /api/accounting/loans/:loanId/adjust (principal/outstanding) ─────────
+router.post('/loans/:loanId/adjust', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+
+    const patch = {};
+    if (req.body?.principal_amount !== undefined) {
+      const raw = req.body?.principal_amount;
+      if (raw === null || Number.isNaN(Number(raw))) {
+        return res.status(400).json({ success: false, error: 'principal_amount must be a number' });
+      }
+      const v = Number(raw);
+      if (v < 0) return res.status(400).json({ success: false, error: 'principal_amount must be >= 0' });
+      patch.principal_amount = v;
+    }
+    if (req.body?.outstanding_amount !== undefined) {
+      const raw = req.body?.outstanding_amount;
+      if (raw === null || Number.isNaN(Number(raw))) {
+        return res.status(400).json({ success: false, error: 'outstanding_amount must be a number' });
+      }
+      const v = Number(raw);
+      if (v < 0) return res.status(400).json({ success: false, error: 'outstanding_amount must be >= 0' });
+      patch.outstanding_amount = v;
+    }
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ success: false, error: 'Provide principal_amount and/or outstanding_amount' });
+    }
+
+    const { data: before, error: bErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (bErr) throw bErr;
+    if (!before) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    patch.updated_at = new Date().toISOString();
+    const { data: after, error: uErr } = await supabase
+      .from('loans')
+      .update(patch)
+      .eq('loan_id', loanId)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan',
+      entity_id: loanId,
+      action: 'adjust_loan_fields',
+      before,
+      after,
+      reason,
+    });
+
+    return res.json({ success: true, loan: after });
+  } catch (err) {
+    console.error('[accounting:loan-adjust]', err.message);
     return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
   }
 });
