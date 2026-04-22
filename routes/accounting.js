@@ -76,35 +76,78 @@ router.get('/health', (req, res) => {
 router.use(requireAccountingAuth);
 
 // ── GET /api/accounting/borrowers ────────────────────────────────────────────
+// Only borrowers with at least one loan where cash disbursement was confirmed (principal sent).
 router.get('/borrowers', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const qRaw = req.query.search != null ? String(req.query.search).trim() : '';
     const from = (page - 1) * limit;
-    const to = from + limit - 1;
 
-    let query = supabase.from('registrations').select('*', { count: 'exact' });
+    const { data: loanRows, error: loanErr } = await supabase
+      .from('loans')
+      .select('borrower_id, cash_disbursement_confirmed_at')
+      .not('cash_disbursement_confirmed_at', 'is', null)
+      .order('cash_disbursement_confirmed_at', { ascending: false })
+      .limit(5000);
+    if (loanErr) throw loanErr;
+
+    const seen = new Set();
+    const orderedBorrowerIds = [];
+    for (const row of loanRows || []) {
+      const bid = row.borrower_id;
+      if (!bid || seen.has(bid)) continue;
+      seen.add(bid);
+      orderedBorrowerIds.push(bid);
+    }
+
+    const customerSet = new Set(orderedBorrowerIds);
+    const orderIndex = new Map(orderedBorrowerIds.map((id, i) => [id, i]));
+    let candidateIds = orderedBorrowerIds;
     if (qRaw) {
       const q = qRaw.replace(/,/g, '');
-      query = query.or(
-        [
-          `borrower_id.ilike.%${q}%`,
-          `full_name.ilike.%${q}%`,
-          `phone.ilike.%${q}%`,
-          `national_id.ilike.%${q}%`,
-        ].join(','),
-      );
+      const { data: nameRows, error: sErr } = await supabase
+        .from('registrations')
+        .select('borrower_id')
+        .or(
+          [
+            `borrower_id.ilike.%${q}%`,
+            `full_name.ilike.%${q}%`,
+            `phone.ilike.%${q}%`,
+            `national_id.ilike.%${q}%`,
+          ].join(','),
+        );
+      if (sErr) throw sErr;
+      const matched = [
+        ...new Set(
+          (nameRows || [])
+            .map((r) => r.borrower_id)
+            .filter((id) => id && customerSet.has(id)),
+        ),
+      ];
+      matched.sort((a, b) => (orderIndex.get(a) - orderIndex.get(b)));
+      candidateIds = matched;
     }
-    const { data: rows, error, count } = await query
-      .order('updated_at', { ascending: false })
-      .range(from, to);
+
+    const total = candidateIds.length;
+    const pageIds = candidateIds.slice(from, from + limit);
+    if (!pageIds.length) {
+      return res.json({ success: true, borrowers: [], total: 0, page, limit });
+    }
+
+    const { data: rows, error } = await supabase
+      .from('registrations')
+      .select('*')
+      .in('borrower_id', pageIds);
     if (error) throw error;
+
+    const byId = Object.fromEntries((rows || []).map((r) => [r.borrower_id, r]));
+    const borrowers = pageIds.map((id) => byId[id]).filter(Boolean);
 
     return res.json({
       success: true,
-      borrowers: rows || [],
-      total: count || 0,
+      borrowers,
+      total,
       page,
       limit,
     });

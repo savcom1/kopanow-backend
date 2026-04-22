@@ -112,7 +112,7 @@ router.get('/devices', async (req, res) => {
 
     const enriched = devices.map(d => ({
       ...d,
-      is_customer: !!d.protection_first_completed_at,
+      is_customer: !!loanMap[d.loan_id]?.cash_disbursement_confirmed_at,
       borrower_full_name: nameByBorrower[d.borrower_id] || null,
       loan: loanMap[d.loan_id]
         ? {
@@ -298,28 +298,15 @@ router.get('/loans', async (req, res) => {
     if (disb === 'pending') query = query.is('cash_disbursement_confirmed_at', null);
     else if (disb === 'confirmed') query = query.not('cash_disbursement_confirmed_at', 'is', null);
 
-    // Protection filter: sticky "customer" = devices.protection_first_completed_at set (not current MDM snapshot)
+    // protection filter: Customer = cash disbursement confirmed; Applicant = not yet (legacy query param name)
     const prot = protection != null ? String(protection).toLowerCase() : 'all';
     if (
       prot === 'customers' || prot === 'applicants' ||
       prot === 'complete' || prot === 'incomplete'
     ) {
-      const { data: devRows, error: readyErr } = await supabase
-        .from('devices')
-        .select('loan_id')
-        .not('protection_first_completed_at', 'is', null)
-        .limit(50000);
-      if (readyErr) throw readyErr;
-      const customerLoanIds = [...new Set((devRows || []).map((r) => r.loan_id).filter(Boolean))];
       const wantCustomers = prot === 'customers' || prot === 'complete';
-      if (wantCustomers) {
-        if (customerLoanIds.length) query = query.in('loan_id', customerLoanIds);
-        else query = query.eq('loan_id', '__no_such_loan__');
-      } else {
-        if (customerLoanIds.length) {
-          query = query.not('loan_id', 'in', `(${quoteBorrowerIdsForInFilter(customerLoanIds).join(',')})`);
-        }
-      }
+      if (wantCustomers) query = query.not('cash_disbursement_confirmed_at', 'is', null);
+      else query = query.is('cash_disbursement_confirmed_at', null);
     }
 
     const qRaw = search != null ? String(search).trim() : '';
@@ -367,7 +354,7 @@ router.get('/loans', async (req, res) => {
       }
     }
 
-    // Join devices: is_customer = sticky protection_first_completed_at; protection_all_required_ok = current MDM snapshot
+    // devices: mdm_compliance = current MDM snapshot; is_customer = cash disbursement confirmed on loan
     let deviceByLoan = {};
     if (loanIdList.length) {
       const { data: devices, error: dErr } = await supabase
@@ -384,7 +371,7 @@ router.get('/loans', async (req, res) => {
         const dev = deviceByLoan[l.loan_id];
         const mdm = dev?.mdm_compliance;
         return {
-        is_customer: !!dev?.protection_first_completed_at,
+        is_customer: !!l.cash_disbursement_confirmed_at,
         protection_all_required_ok:
           (mdm && typeof mdm === 'object' && mdm.all_required_ok === true) || false,
         ...l,
