@@ -57,6 +57,7 @@ const pinRouter = require('./routes/pin');
 const lipaIngestRouter = require('./routes/lipa-ingest');
 const notifyRouter = require('./routes/notify');
 const provisionRouter = require('./routes/provision');
+const loanOverviewRouter = require('./routes/loanoverview');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -71,12 +72,15 @@ app.use('/api/pin', pinRouter);
 app.use('/api/lipa', lipaIngestRouter);
 app.use('/api/notify', notifyRouter);
 app.use('/api/provision', provisionRouter);
+app.use('/api/admin/loanoverview', loanOverviewRouter);
 
 const adminStatic = path.join(__dirname, 'admin');
 const accountingStatic = path.join(__dirname, 'accounting');
+const loanOverviewStatic = path.join(__dirname, 'loanoverview');
 
 app.use('/admin', express.static(adminStatic));
 app.use('/accounting', express.static(accountingStatic));
+app.use('/loanoverview', express.static(loanOverviewStatic));
 
 app.get('/', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
@@ -86,6 +90,7 @@ app.get('/', (req, res) => {
   <ul>
     <li><a href="/admin/">Admin (operations)</a> — devices, tamper, lipa ops</li>
     <li><a href="/accounting/">Accounting</a> — borrowers, loans, Lipa cash-in, reports</li>
+    <li><a href="/loanoverview/">LoanOverview</a> — real-time KPIs (polling)</li>
   </ul>
   <p>API: <code>/api/admin/*</code>, <code>/api/accounting/*</code>, <code>/api/loan/*</code>, <code>/api/device/*</code>, …</p>
 </body></html>`);

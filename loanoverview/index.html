@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kopanow — LoanOverview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Reuse accounting styles for consistent look -->
+  <link rel="stylesheet" href="/accounting/styles.css" />
+  <style>
+    .wrap { padding: 18px; max-width: 1200px; margin: 0 auto; }
+    .toprow { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    .toprow .field { display:flex; flex-direction:column; gap:6px; }
+    .toprow input, .toprow select { height: 38px; }
+    .kpi-grid { margin-top: 14px; }
+    .kpi-val { font-size: 22px; }
+    .muted-small { color: rgba(255,255,255,0.65); font-size: 12px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row .card { flex:1; min-width: 320px; }
+    pre.code-block { max-height: 260px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand" style="margin-bottom:12px">
+      <span class="brand-dot"></span>
+      <span class="brand-name">Kopanow</span>
+      <span class="brand-tag">LoanOverview</span>
+      <span class="muted-small" style="margin-left:auto">Poll: 30s</span>
+    </div>
+
+    <div class="card">
+      <div class="toprow">
+        <div class="field" style="min-width:260px">
+          <label class="key-label">Admin key</label>
+          <input type="password" id="admin-key" class="key-input" placeholder="x-admin-key" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="key-label">Window</label>
+          <select id="window" class="key-input" style="min-width:140px">
+            <option value="day">Day</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="key-label">From (optional)</label>
+          <input type="datetime-local" id="from" class="key-input" />
+        </div>
+        <div class="field">
+          <label class="key-label">To (optional)</label>
+          <input type="datetime-local" id="to" class="key-input" />
+        </div>
+        <div class="field">
+          <button type="button" class="btn btn-primary" id="btn-refresh">Refresh now</button>
+        </div>
+        <div class="field">
+          <div class="muted-small">Last updated</div>
+          <div id="last-updated" class="muted">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Applicants (window)</div><div class="kpi-val" id="kpi-applicants">—</div><div class="kpi-sub" id="kpi-registrations"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Customers (window)</div><div class="kpi-val" id="kpi-customers">—</div><div class="kpi-sub" id="kpi-customers-total"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Disbursed (window)</div><div class="kpi-val" id="kpi-disbursed">—</div><div class="kpi-sub" id="kpi-disbursed-count"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Gross outstanding</div><div class="kpi-val" id="kpi-gross">—</div><div class="kpi-sub" id="kpi-par30"></div></div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3 style="margin:0 0 10px">Payments (window)</h3>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">Lipa total</div><div class="kpi-val" id="kpi-lipa-total">—</div><div class="kpi-sub" id="kpi-lipa-rows"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Lipa claimed</div><div class="kpi-val" id="kpi-lipa-claimed">—</div><div class="kpi-sub">Claimed</div></div>
+          <div class="kpi-card"><div class="kpi-label">Lipa unclaimed</div><div class="kpi-val" id="kpi-lipa-unclaimed">—</div><div class="kpi-sub">Unclaimed</div></div>
+          <div class="kpi-card"><div class="kpi-label">Verified payments</div><div class="kpi-val" id="kpi-verified">—</div><div class="kpi-sub" id="kpi-verified-rows"></div></div>
+        </div>
+        <div class="muted-small" id="kpi-payment-refs" style="margin-top:10px">—</div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px">Operations (window)</h3>
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">Protections OK</div><div class="kpi-val" id="kpi-prot-ok">—</div><div class="kpi-sub">devices.protection_first_completed_at</div></div>
+          <div class="kpi-card"><div class="kpi-label">Queue pending</div><div class="kpi-val" id="kpi-q-pending">—</div><div class="kpi-sub">cash_disbursement_queue pending</div></div>
+          <div class="kpi-card"><div class="kpi-label">Queue completed</div><div class="kpi-val" id="kpi-q-completed">—</div><div class="kpi-sub">cash_disbursement_queue completed</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3 style="margin:0 0 10px">Aging (completed loans only)</h3>
+        <pre class="code-block" id="aging-out"></pre>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 10px">Raw JSON</h3>
+        <pre class="code-block" id="raw-out"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
