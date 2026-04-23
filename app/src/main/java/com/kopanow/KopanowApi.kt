@@ -327,7 +327,10 @@ object KopanowApi {
         Log.d(TAG, "POST $url")
         try {
             val body = gson.toJson(payload).toRequestBody(JSON)
-            val request = Request.Builder().url(url).post(body).build()
+            val request = Request.Builder()
+                .url(url)
+                .post(body)
+                .build()
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
             Log.d(TAG, "POST $url → ${response.code}: $responseBody")
@@ -359,7 +362,10 @@ object KopanowApi {
             if (urlBuilder == null) return@withContext ApiResult(success = false, error = "Invalid URL")
             params.forEach { (key, value) -> urlBuilder.addQueryParameter(key, value) }
             
-            val request = Request.Builder().url(urlBuilder.build()).get().build()
+            val request = Request.Builder()
+                .url(urlBuilder.build())
+                .get()
+                .build()
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
             if (response.isSuccessful) {

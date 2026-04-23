@@ -102,7 +102,7 @@
     <string name="reg_mkopo_section_title">Find your phone — default loan (MKOPO)</string>
     <string name="reg_mkopo_brand_hint">Phone brand</string>
     <string name="reg_mkopo_model_hint">Model (shows default MKOPO)</string>
-    <string name="reg_mkopo_detected_fmt">Suggested from this device: %1$s</string>
+    <string name="reg_mkopo_detected_fmt">Allocated from this device: %1$s (amount is locked)</string>
     <string name="contract_setup_reminder">Baada ya kukubali: utarudi kwenye programu kuwezesha ulinzi wa kifaa (hatua 7).</string>
 
     <!-- Onboarding completion -->

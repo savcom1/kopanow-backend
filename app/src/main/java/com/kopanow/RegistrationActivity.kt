@@ -138,6 +138,12 @@ class RegistrationActivity : AppCompatActivity() {
             tilMkopoModel.visibility = View.GONE
             tvMkopoAutoHint.visibility = View.GONE
         } else {
+            // Default to editable unless MKOPO allocation is applied.
+            if (!etAmount.isEnabled) {
+                etAmount.isEnabled = true
+                tilAmount.isEnabled = true
+            }
+
             // Fully automatic flow: do not force brand/model picking. Keep fields hidden in the layout.
             tvMkopoSection.visibility = View.GONE
             tilMkopoBrand.visibility = View.GONE
@@ -155,6 +161,9 @@ class RegistrationActivity : AppCompatActivity() {
                     etAmount.setText(s.amountTzsRounded.toString())
                     tvMkopoAutoHint.text = getString(R.string.reg_mkopo_detected_fmt, s.label)
                     tvMkopoAutoHint.visibility = View.VISIBLE
+                    // MKOPO allocation is derived from the phone model; user must not override it in-app.
+                    etAmount.isEnabled = false
+                    tilAmount.isEnabled = false
                     refreshWeeklyInstallmentPreview()
                 }
             }
