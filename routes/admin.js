@@ -24,6 +24,14 @@ function quoteBorrowerIdsForInFilter(ids) {
   });
 }
 
+/** PostgREST `in.(...)` values for Supabase `.or()` filters */
+function quoteLoanIdsForInFilter(ids) {
+  return ids.map((id) => {
+    const s = String(id);
+    return /^[a-zA-Z0-9_-]+$/.test(s) ? s : `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  });
+}
+
 /** Roll up loan_invoices rows for list views (counts + next unpaid due). */
 function summarizeInvoiceRows(rows) {
   if (!rows?.length) return null;
@@ -37,6 +45,31 @@ function summarizeInvoiceRows(rows) {
     total: rows.length,
     next_due_date: nextUnpaid?.due_date || null,
   };
+}
+
+async function fetchCompletedDisbursementLoanIdsSet(loanIds) {
+  if (!loanIds?.length) return new Set();
+  const { data, error } = await supabase
+    .from('cash_disbursement_queue')
+    .select('loan_id')
+    .eq('status', 'completed')
+    .in('loan_id', loanIds);
+  if (error) throw error;
+  return new Set((data || []).map((r) => r.loan_id).filter(Boolean));
+}
+
+async function fetchQueueLoanIdsByStatus(status, opts = {}) {
+  const st = String(status || '').toLowerCase();
+  if (st !== 'pending' && st !== 'completed') return [];
+  let q = supabase
+    .from('cash_disbursement_queue')
+    .select('loan_id, updated_at')
+    .eq('status', st)
+    .limit(50000);
+  if (opts.updatedAfterIso) q = q.gte('updated_at', opts.updatedAfterIso);
+  const { data, error } = await q;
+  if (error) throw error;
+  return [...new Set((data || []).map((r) => r.loan_id).filter(Boolean))];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,6 +130,7 @@ router.get('/devices', async (req, res) => {
       const { data: loans } = await supabase.from('loans').select('*').in('loan_id', loanIds);
       loanMap = Object.fromEntries((loans || []).map(l => [l.loan_id, l]));
     }
+    const completedLoanIds = await fetchCompletedDisbursementLoanIdsSet(loanIds);
 
     let invByLoan = {};
     if (loanIds.length) {
@@ -112,7 +146,7 @@ router.get('/devices', async (req, res) => {
 
     const enriched = devices.map(d => ({
       ...d,
-      is_customer: !!loanMap[d.loan_id]?.cash_disbursement_confirmed_at,
+      is_customer: completedLoanIds.has(d.loan_id),
       borrower_full_name: nameByBorrower[d.borrower_id] || null,
       loan: loanMap[d.loan_id]
         ? {
@@ -212,17 +246,16 @@ router.get('/disbursement-summary', async (req, res) => {
     const startIso = startUtc.toISOString();
 
     const { count: pending, error: e1 } = await supabase
-      .from('loans')
+      .from('cash_disbursement_queue')
       .select('*', { count: 'exact', head: true })
-      .is('cash_disbursement_confirmed_at', null)
-      .is('repaid_at', null)
-      .gt('outstanding_amount', 0);
+      .eq('status', 'pending');
     if (e1) throw e1;
 
     const { count: confirmedToday, error: e2 } = await supabase
-      .from('loans')
+      .from('cash_disbursement_queue')
       .select('*', { count: 'exact', head: true })
-      .gte('cash_disbursement_confirmed_at', startIso);
+      .eq('status', 'completed')
+      .gte('updated_at', startIso);
     if (e2) throw e2;
 
     return res.json({
@@ -243,16 +276,7 @@ router.get('/stage-summary', async (req, res) => {
     startUtc.setUTCHours(0, 0, 0, 0);
     const startIso = startUtc.toISOString();
 
-    const { data: pendingLoans, error: pErr } = await supabase
-      .from('loans')
-      .select('loan_id')
-      .is('cash_disbursement_confirmed_at', null)
-      .is('repaid_at', null)
-      .gt('outstanding_amount', 0)
-      .limit(50000);
-    if (pErr) throw pErr;
-
-    const pendingLoanIds = [...new Set((pendingLoans || []).map((l) => l.loan_id).filter(Boolean))];
+    const pendingLoanIds = await fetchQueueLoanIdsByStatus('pending');
     let readyLoanIds = new Set();
     if (pendingLoanIds.length) {
       const { data: readyRows, error: rErr } = await supabase
@@ -269,9 +293,10 @@ router.get('/stage-summary', async (req, res) => {
     const pending_cashout_not_ready_count = pendingLoanIds.length - pending_cashout_ready_count;
 
     const { count: cashoutSentToday, error: cErr } = await supabase
-      .from('loans')
+      .from('cash_disbursement_queue')
       .select('*', { count: 'exact', head: true })
-      .gte('cash_disbursement_confirmed_at', startIso);
+      .eq('status', 'completed')
+      .gte('updated_at', startIso);
     if (cErr) throw cErr;
 
     return res.json({
@@ -295,8 +320,14 @@ router.get('/loans', async (req, res) => {
     let query = supabase.from('loans').select('*', { count: 'exact' });
     if (device_status && device_status !== 'all') query = query.eq('device_status', device_status);
     const disb = disbursement != null ? String(disbursement).toLowerCase() : 'all';
-    if (disb === 'pending') query = query.is('cash_disbursement_confirmed_at', null);
-    else if (disb === 'confirmed') query = query.not('cash_disbursement_confirmed_at', 'is', null);
+    if (disb === 'pending' || disb === 'confirmed') {
+      const wantCompleted = disb === 'confirmed';
+      const loanIds = await fetchQueueLoanIdsByStatus(wantCompleted ? 'completed' : 'pending');
+      if (!loanIds.length) {
+        return res.json({ success: true, loans: [], total: 0, page: parseInt(page) });
+      }
+      query = query.in('loan_id', loanIds);
+    }
 
     // protection filter: Customer = cash disbursement confirmed; Applicant = not yet (legacy query param name)
     const prot = protection != null ? String(protection).toLowerCase() : 'all';
@@ -305,8 +336,14 @@ router.get('/loans', async (req, res) => {
       prot === 'complete' || prot === 'incomplete'
     ) {
       const wantCustomers = prot === 'customers' || prot === 'complete';
-      if (wantCustomers) query = query.not('cash_disbursement_confirmed_at', 'is', null);
-      else query = query.is('cash_disbursement_confirmed_at', null);
+      const completedLoanIds = await fetchQueueLoanIdsByStatus('completed');
+      if (!completedLoanIds.length) {
+        if (wantCustomers) return res.json({ success: true, loans: [], total: 0, page: parseInt(page) });
+      } else if (wantCustomers) {
+        query = query.in('loan_id', completedLoanIds);
+      } else {
+        query = query.not('loan_id', 'in', `(${quoteLoanIdsForInFilter(completedLoanIds).join(',')})`);
+      }
     }
 
     const qRaw = search != null ? String(search).trim() : '';
@@ -342,6 +379,7 @@ router.get('/loans', async (req, res) => {
     }
 
     const loanIdList = (loans || []).map(l => l.loan_id);
+    const completedLoanIds = await fetchCompletedDisbursementLoanIdsSet(loanIdList);
     let invByLoan = {};
     if (loanIdList.length) {
       const { data: invRows } = await supabase
@@ -371,7 +409,7 @@ router.get('/loans', async (req, res) => {
         const dev = deviceByLoan[l.loan_id];
         const mdm = dev?.mdm_compliance;
         return {
-        is_customer: !!l.cash_disbursement_confirmed_at,
+        is_customer: completedLoanIds.has(l.loan_id),
         protection_all_required_ok:
           (mdm && typeof mdm === 'object' && mdm.all_required_ok === true) || false,
         ...l,

@@ -54,10 +54,11 @@ function includeIncompleteLoans(req) {
 }
 
 async function fetchConfirmedLoanIdsSet() {
+  // Treat "confirmed/complete" loans as those with cash disbursement queue status completed.
   const { data, error } = await supabase
-    .from('loans')
+    .from('cash_disbursement_queue')
     .select('loan_id')
-    .not('cash_disbursement_confirmed_at', 'is', null)
+    .eq('status', 'completed')
     .limit(50000);
   if (error) throw error;
   return new Set((data || []).map((r) => r.loan_id));
@@ -108,7 +109,7 @@ router.get('/borrowers/lookup-for-purge', async (req, res) => {
 });
 
 // ── GET /api/accounting/borrowers ────────────────────────────────────────────
-// Only borrowers with at least one loan where cash disbursement was confirmed (principal sent).
+// Only borrowers whose LATEST loan has cash disbursement queue status = completed.
 router.get('/borrowers', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -116,26 +117,42 @@ router.get('/borrowers', async (req, res) => {
     const qRaw = req.query.search != null ? String(req.query.search).trim() : '';
     const from = (page - 1) * limit;
 
+    // Latest loan per borrower (by created_at DESC). We'll later check queue completion for that loan.
     const { data: loanRows, error: loanErr } = await supabase
       .from('loans')
-      .select('borrower_id, cash_disbursement_confirmed_at')
-      .not('cash_disbursement_confirmed_at', 'is', null)
-      .order('cash_disbursement_confirmed_at', { ascending: false })
-      .limit(5000);
+      .select('borrower_id, loan_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(8000);
     if (loanErr) throw loanErr;
 
     const seen = new Set();
     const orderedBorrowerIds = [];
+    const latestLoanByBorrower = new Map();
     for (const row of loanRows || []) {
       const bid = row.borrower_id;
       if (!bid || seen.has(bid)) continue;
       seen.add(bid);
       orderedBorrowerIds.push(bid);
+      if (row.loan_id) latestLoanByBorrower.set(bid, row.loan_id);
     }
 
-    const customerSet = new Set(orderedBorrowerIds);
+    const latestLoanIds = [...new Set([...latestLoanByBorrower.values()].filter(Boolean))];
+    const { data: completedRows, error: cErr } = await supabase
+      .from('cash_disbursement_queue')
+      .select('loan_id')
+      .eq('status', 'completed')
+      .in('loan_id', latestLoanIds);
+    if (cErr) throw cErr;
+    const completedLoanIds = new Set((completedRows || []).map((r) => r.loan_id).filter(Boolean));
+
+    const customerSet = new Set(
+      orderedBorrowerIds.filter((bid) => {
+        const lid = latestLoanByBorrower.get(bid);
+        return lid && completedLoanIds.has(lid);
+      }),
+    );
     const orderIndex = new Map(orderedBorrowerIds.map((id, i) => [id, i]));
-    let candidateIds = orderedBorrowerIds;
+    let candidateIds = orderedBorrowerIds.filter((id) => customerSet.has(id));
     if (qRaw) {
       const q = qRaw.replace(/,/g, '');
       const { data: nameRows, error: sErr } = await supabase
@@ -487,7 +504,6 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       .from('loans')
       .select('*')
       .in('loan_id', loanIds)
-      .is('cash_disbursement_confirmed_at', null)
       .is('repaid_at', null)
       .gt('outstanding_amount', 0);
     if (error) throw error;
@@ -1284,7 +1300,26 @@ router.get('/reports/par', async (req, res) => {
       .select('loan_id, borrower_id, outstanding_amount, device_status')
       .gt('outstanding_amount', 0);
     if (!incAll) {
-      loanQuery = loanQuery.not('cash_disbursement_confirmed_at', 'is', null);
+      const confirmedSet = await fetchConfirmedLoanIdsSet();
+      const confirmedIds = [...confirmedSet];
+      if (!confirmedIds.length) {
+        return res.json({
+          success: true,
+          as_of: asOf.toISOString(),
+          definition: {
+            complete_loans_only: true,
+            include_incomplete: false,
+            denominator: 'No completed loans in cash_disbursement_queue.',
+            numerator:
+              'For each such loan, max days past due = longest delay among pending/overdue installments with due_date < asOf. If max >= N, add full loan outstanding to PARn balance.',
+            par_pct: 'PARn balance / denominator * 100',
+          },
+          portfolio_gross_outstanding: 0,
+          par: { par1: { balance: 0, pct: 0 }, par30: { balance: 0, pct: 0 }, par90: { balance: 0, pct: 0 } },
+          loan_count_in_par30: 0,
+        });
+      }
+      loanQuery = loanQuery.in('loan_id', confirmedIds);
     }
     const { data: loans, error: le } = await loanQuery;
     if (le) throw le;
@@ -1337,7 +1372,7 @@ router.get('/reports/par', async (req, res) => {
         denominator:
           incAll
             ? 'Sum of loans.outstanding_amount for all loans with outstanding_amount > 0.'
-            : 'Same, but only loans with cash_disbursement_confirmed_at set (cashier sent principal).',
+            : 'Same, but only loans with cash_disbursement_queue.status = completed (cashier completed disbursement).',
         numerator:
           'For each such loan, max days past due = longest delay among pending/overdue installments with due_date < asOf. If max >= N, add full loan outstanding to PARn balance.',
         par_pct: 'PARn balance / denominator * 100',
