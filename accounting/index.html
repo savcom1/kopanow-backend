@@ -144,10 +144,6 @@
     <section class="view" id="view-cash-disburse">
       <div class="toolbar">
         <p class="muted" style="flex:1;margin:0">Loans on the <strong>cash disbursement queue</strong> (first time all required protections OK, principal not yet confirmed sent). Confirm here after the cashier sends funds. Confirmed loans count toward portfolio reporting (PAR, aging, etc.).</p>
-        <label class="muted" style="display:flex;align-items:center;gap:6px;margin:0 10px 0 0;font-size:12px">
-          <input type="checkbox" id="cb-show-blocked-disburse" />
-          Show tamper-blocked (needs admin approval)
-        </label>
         <button type="button" class="btn btn-secondary" id="btn-pending-disburse-refresh">Refresh</button>
       </div>
       <div class="table-wrap scroll">
@@ -163,27 +159,6 @@
           </thead>
           <tbody></tbody>
         </table>
-      </div>
-
-      <div class="card mt" id="card-blocked-disburse" hidden>
-        <h3 style="margin:0 0 10px">Tamper-blocked (not enqueued)</h3>
-        <p class="muted" style="margin:0 0 12px;font-size:12px">
-          These borrowers completed protections but were <strong>locked/suspended/admin_removed</strong> at that time, so they need <strong>Admin → approve-disbursement</strong> before enqueueing.
-        </p>
-        <div class="table-wrap scroll" style="max-height:260px">
-          <table class="data-table" id="table-blocked-disburse">
-            <thead>
-              <tr>
-                <th>Loan ID</th>
-                <th>Borrower</th>
-                <th>Blocked at</th>
-                <th>Reason</th>
-                <th>Device status</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
       </div>
     </section>
 

@@ -447,8 +447,7 @@ $('#btn-sync-outstanding').addEventListener('click', async () => {
 });
 
 async function loadPendingDisbursement() {
-  const showBlocked = $('#cb-show-blocked-disburse')?.checked === true;
-  const data = await apiFetch(`/loans/pending-disbursement?include_blocked=${showBlocked ? '1' : '0'}`);
+  const data = await apiFetch('/loans/pending-disbursement');
   const tb = $('#table-pending-disburse tbody');
   tb.innerHTML = '';
   for (const l of data.loans || []) {
@@ -459,29 +458,6 @@ async function loadPendingDisbursement() {
     tr.innerHTML = `<td>${escapeHtml(l.loan_id)}</td><td>${escapeHtml(who)}</td><td>${escapeHtml(principal)}</td><td>${fmtDate(l.created_at)}</td><td><button type="button" class="btn btn-primary" data-confirm-disburse="1">Confirm</button></td>`;
     tr.dataset.loanId = l.loan_id;
     tb.appendChild(tr);
-  }
-
-  const card = $('#card-blocked-disburse');
-  const tb2 = $('#table-blocked-disburse tbody');
-  if (card && tb2) {
-    if (!showBlocked) {
-      card.hidden = true;
-      tb2.innerHTML = '';
-    } else {
-      card.hidden = false;
-      tb2.innerHTML = '';
-      for (const l of data.blocked || []) {
-        const tr = document.createElement('tr');
-        const who = l.borrower_full_name || l.borrower_id || '—';
-        tr.innerHTML =
-          `<td>${escapeHtml(l.loan_id)}</td>` +
-          `<td>${escapeHtml(who)}</td>` +
-          `<td>${fmtDate(l.disbursement_blocked_at)}</td>` +
-          `<td>${escapeHtml(l.disbursement_block_reason || '—')}</td>` +
-          `<td>${escapeHtml(l.device_status || '—')}</td>`;
-        tb2.appendChild(tr);
-      }
-    }
   }
 }
 
@@ -684,10 +660,6 @@ $('#table-pending-disburse').addEventListener('click', (e) => {
 });
 
 $('#btn-pending-disburse-refresh').addEventListener('click', () => {
-  loadPendingDisbursement().catch((e) => toast(e.message, true));
-});
-
-$('#cb-show-blocked-disburse')?.addEventListener('change', () => {
   loadPendingDisbursement().catch((e) => toast(e.message, true));
 });
 

@@ -138,12 +138,6 @@ CREATE TABLE IF NOT EXISTS devices (
   mdm_compliance           JSONB,
   -- Sticky: first heartbeat time when mdm_compliance.all_required_ok was true (cash disburse queue enqueue)
   protection_first_completed_at TIMESTAMPTZ,
-  -- When protections complete but tamper state blocks disbursement queueing
-  disbursement_blocked_at       TIMESTAMPTZ,
-  disbursement_block_reason     TEXT,
-  -- Admin override to allow disbursement queueing despite tamper
-  disbursement_admin_override_at TIMESTAMPTZ,
-  disbursement_admin_override_by TEXT,
   device_info              JSONB,
   tamper_events            JSONB       NOT NULL DEFAULT '[]',
 

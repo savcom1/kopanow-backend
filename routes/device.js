@@ -377,60 +377,21 @@ router.post('/heartbeat', async (req, res) => {
         Number(loanRow.outstanding_amount) > 0;
 
       if (eligible) {
-        // If tamper-locked/suspended/admin_removed, require explicit admin approval before enqueue.
-        const isBlocked =
-          serverForcedLock ||
-          updates.is_locked === true ||
-          device.is_locked === true ||
-          updates.status === 'locked' ||
-          device.status === 'locked' ||
-          updates.status === 'suspended' ||
-          device.status === 'suspended' ||
-          updates.status === 'admin_removed' ||
-          device.status === 'admin_removed';
-
-        if (isBlocked) {
-          const reason =
-            updates.lock_reason ||
-            device.lock_reason ||
-            (serverForcedLock ? 'Tamper lock forced by heartbeat' : 'Disbursement blocked by device status');
-          const ts = receivedAt;
-          const { error: bErr } = await supabase
-            .from('devices')
-            .update({
-              disbursement_blocked_at: ts,
-              disbursement_block_reason: String(reason).slice(0, 500),
-              updated_at: ts,
-            })
-            .eq('id', device.id);
-          if (bErr) console.error('[heartbeat:disbursement_blocked]', bErr.message);
-        } else {
-          // Clear any previous block markers (if any) and enqueue.
-          const ts = receivedAt;
-          await supabase
-            .from('devices')
-            .update({
-              disbursement_blocked_at: null,
-              disbursement_block_reason: null,
-              updated_at: ts,
-            })
-            .eq('id', device.id);
-
-          const { error: qErr } = await supabase
-            .from('cash_disbursement_queue')
-            .upsert(
-              {
-                loan_id,
-                borrower_id,
-                enqueued_at: ts,
-                status: 'pending',
-                phone,
-                principal_amount: principalAmount,
-              },
-              { onConflict: 'loan_id', ignoreDuplicates: true },
-            );
-          if (qErr) console.error('[heartbeat:cash_disbursement_queue]', qErr.message);
-        }
+        const ts = receivedAt;
+        const { error: qErr } = await supabase
+          .from('cash_disbursement_queue')
+          .upsert(
+            {
+              loan_id,
+              borrower_id,
+              enqueued_at: ts,
+              status: 'pending',
+              phone,
+              principal_amount: principalAmount,
+            },
+            { onConflict: 'loan_id', ignoreDuplicates: true },
+          );
+        if (qErr) console.error('[heartbeat:cash_disbursement_queue]', qErr.message);
       }
     }
 
