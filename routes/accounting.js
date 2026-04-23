@@ -487,6 +487,10 @@ router.get('/loans', async (req, res) => {
 // ── GET /api/accounting/loans/pending-disbursement (before :loanId route) ───
 router.get('/loans/pending-disbursement', async (req, res) => {
   try {
+    const includeBlocked =
+      req.query?.include_blocked === '1' ||
+      String(req.query?.include_blocked || '').toLowerCase() === 'true';
+
     const { data: queueRows, error: qErr } = await supabase
       .from('cash_disbursement_queue')
       .select('loan_id, borrower_id, enqueued_at, phone, principal_amount')
@@ -556,11 +560,73 @@ router.get('/loans/pending-disbursement', async (req, res) => {
       };
     });
 
+    let blocked = [];
+    if (includeBlocked) {
+      const { data: blockedDevices, error: bDErr } = await supabase
+        .from('devices')
+        .select('loan_id, borrower_id, disbursement_blocked_at, disbursement_block_reason, status, is_locked, protection_first_completed_at')
+        .not('disbursement_blocked_at', 'is', null)
+        .order('disbursement_blocked_at', { ascending: false })
+        .limit(200);
+      if (bDErr) throw bDErr;
+
+      const blockedLoanIds = [...new Set((blockedDevices || []).map((d) => d.loan_id).filter(Boolean))];
+      if (blockedLoanIds.length) {
+        const { data: queueHits, error: qHErr } = await supabase
+          .from('cash_disbursement_queue')
+          .select('loan_id, status')
+          .in('loan_id', blockedLoanIds);
+        if (qHErr) throw qHErr;
+        const hasQueue = new Set((queueHits || []).map((r) => r.loan_id));
+
+        const missingQueueLoanIds = blockedLoanIds.filter((id) => !hasQueue.has(id));
+        if (missingQueueLoanIds.length) {
+          const { data: blockedLoans, error: bLErr } = await supabase
+            .from('loans')
+            .select('*')
+            .in('loan_id', missingQueueLoanIds)
+            .is('cash_disbursement_confirmed_at', null)
+            .is('repaid_at', null)
+            .gt('outstanding_amount', 0);
+          if (bLErr) throw bLErr;
+
+          const byId = Object.fromEntries((blockedLoans || []).map((l) => [l.loan_id, l]));
+          const devByLoanId = Object.fromEntries((blockedDevices || []).map((d) => [d.loan_id, d]));
+          const borrowerIds2 = [...new Set((blockedLoans || []).map((l) => l.borrower_id).filter(Boolean))];
+          let nameByBorrower2 = {};
+          if (borrowerIds2.length) {
+            const { data: regs2 } = await supabase
+              .from('registrations')
+              .select('borrower_id, full_name, phone')
+              .in('borrower_id', borrowerIds2);
+            nameByBorrower2 = Object.fromEntries((regs2 || []).map((r) => [r.borrower_id, r]));
+          }
+
+          blocked = missingQueueLoanIds
+            .map((loanId) => {
+              const l = byId[loanId];
+              if (!l) return null;
+              const dev = devByLoanId[loanId] || null;
+              return {
+                ...l,
+                borrower_full_name: nameByBorrower2[l.borrower_id]?.full_name || null,
+                borrower_phone: nameByBorrower2[l.borrower_id]?.phone || null,
+                disbursement_blocked_at: dev?.disbursement_blocked_at || null,
+                disbursement_block_reason: dev?.disbursement_block_reason || null,
+                device_status: dev?.status || null,
+              };
+            })
+            .filter(Boolean);
+        }
+      }
+    }
+
     return res.json({
       success: true,
       stage: 'customers',
       loans: enriched,
       count: enriched.length,
+      blocked,
     });
   } catch (err) {
     console.error('[accounting:pending-disbursement]', err.message);

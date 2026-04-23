@@ -462,6 +462,115 @@ router.get('/loans/:loanId/invoices', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/loans/:loanId/approve-disbursement
+// Explicitly allow disbursement queueing when tamper state blocks it.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/loans/:loanId/approve-disbursement', async (req, res) => {
+  try {
+    const loanId = String(req.params.loanId || '').trim();
+    const actor = req.body?.actor != null ? String(req.body.actor).trim() : '';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+
+    if (!loanId) return res.status(400).json({ success: false, error: 'loanId is required' });
+    if (!actor) return res.status(400).json({ success: false, error: 'actor is required' });
+    if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
+
+    const nowIso = new Date().toISOString();
+
+    const [{ data: loan, error: loanErr }, { data: queueRow, error: qPeekErr }] = await Promise.all([
+      supabase
+        .from('loans')
+        .select('loan_id, borrower_id, cash_disbursement_confirmed_at, repaid_at, outstanding_amount, principal_amount')
+        .eq('loan_id', loanId)
+        .maybeSingle(),
+      supabase
+        .from('cash_disbursement_queue')
+        .select('loan_id, status')
+        .eq('loan_id', loanId)
+        .maybeSingle(),
+    ]);
+    if (loanErr) throw loanErr;
+    if (qPeekErr) throw qPeekErr;
+    if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    if (queueRow?.status === 'completed') {
+      return res.status(409).json({ success: false, error: 'Loan already completed in cash_disbursement_queue' });
+    }
+
+    const eligible =
+      !loan.cash_disbursement_confirmed_at &&
+      !loan.repaid_at &&
+      Number(loan.outstanding_amount) > 0;
+    if (!eligible) {
+      return res.status(409).json({ success: false, error: 'Loan is not eligible for disbursement queueing' });
+    }
+
+    const { data: device, error: devErr } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('loan_id', loanId)
+      .eq('borrower_id', loan.borrower_id)
+      .maybeSingle();
+    if (devErr) throw devErr;
+    if (!device) return res.status(404).json({ success: false, error: 'Device not found for loan' });
+
+    const { data: regRow, error: regErr } = await supabase
+      .from('registrations')
+      .select('phone')
+      .eq('borrower_id', loan.borrower_id)
+      .maybeSingle();
+    if (regErr) throw regErr;
+    const phoneRaw =
+      (regRow?.phone && String(regRow.phone).trim()) ||
+      (device.mpesa_phone && String(device.mpesa_phone).trim()) ||
+      '';
+    const phone = phoneRaw ? phoneRaw : null;
+
+    const { error: updErr } = await supabase
+      .from('devices')
+      .update({
+        disbursement_admin_override_at: nowIso,
+        disbursement_admin_override_by: actor,
+        disbursement_blocked_at: null,
+        disbursement_block_reason: null,
+        updated_at: nowIso,
+      })
+      .eq('id', device.id);
+    if (updErr) throw updErr;
+
+    const principalAmount =
+      loan?.principal_amount != null ? Number(loan.principal_amount) : null;
+
+    const { error: upsertErr } = await supabase
+      .from('cash_disbursement_queue')
+      .upsert(
+        {
+          loan_id: loanId,
+          borrower_id: loan.borrower_id,
+          enqueued_at: nowIso,
+          status: 'pending',
+          phone,
+          principal_amount: principalAmount,
+        },
+        { onConflict: 'loan_id' },
+      );
+    if (upsertErr) throw upsertErr;
+
+    await logTamper(loan.borrower_id, loanId, EVENT_TYPES.MANUAL_FLAG, {
+      source: 'ops',
+      device_id: device.device_id,
+      auto_action: 'APPROVE_DISBURSEMENT',
+      detail: `Admin disbursement approval: actor=${actor}; reason=${reason}`,
+    });
+
+    return res.json({ success: true, loan_id: loanId, borrower_id: loan.borrower_id, enqueued: true });
+  } catch (err) {
+    console.error('[admin:approve-disbursement]', err.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/admin/command
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/command', async (req, res) => {
