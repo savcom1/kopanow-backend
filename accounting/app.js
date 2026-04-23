@@ -216,7 +216,8 @@ async function openLoan(loanId) {
   $('#loan-detail-meta').textContent =
     `Borrower: ${data.registration?.full_name || data.loan.borrower_id}` +
     ` · Principal: ${data.loan.principal_amount ?? '—'}` +
-    ` · Outstanding: ${data.loan.outstanding_amount ?? '—'}`;
+    ` · Outstanding: ${data.loan.outstanding_amount ?? '—'}` +
+    ` · Total repay: ${data.loan.total_repayment_amount ?? '—'}`;
   const fo = $('#form-outstanding');
   fo.outstanding_amount.value = data.loan.outstanding_amount ?? '';
   fo.reason.value = '';
@@ -225,6 +226,10 @@ async function openLoan(loanId) {
   fp.principal_amount.value = data.loan.principal_amount ?? '';
   fp.reason.value = '';
   fp.actor.value = '';
+  const fr = $('#form-total-repayment');
+  fr.total_repayment_amount.value = data.loan.total_repayment_amount ?? '';
+  fr.reason.value = '';
+  fr.actor.value = '';
 
   const tb = $('#table-invoices tbody');
   tb.innerHTML = '';
@@ -384,6 +389,26 @@ $('#form-principal').addEventListener('submit', async (e) => {
       }),
     });
     toast('Principal updated');
+    openLoan(selectedLoanId);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#form-total-repayment').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedLoanId) return;
+  const f = e.target;
+  try {
+    await apiFetch(`/loans/${encodeURIComponent(selectedLoanId)}/adjust-total-repayment`, {
+      method: 'POST',
+      body: JSON.stringify({
+        total_repayment_amount: Number(f.total_repayment_amount.value),
+        reason: f.reason.value.trim(),
+        actor: f.actor.value.trim() || 'accounting',
+      }),
+    });
+    toast('Total repayment updated');
     openLoan(selectedLoanId);
   } catch (err) {
     toast(err.message, true);

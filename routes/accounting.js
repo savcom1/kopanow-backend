@@ -926,6 +926,60 @@ router.post('/loans/:loanId/adjust-principal', async (req, res) => {
   }
 });
 
+// ── POST /api/accounting/loans/:loanId/adjust-total-repayment ────────────────
+router.post('/loans/:loanId/adjust-total-repayment', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+    const raw = req.body?.total_repayment_amount;
+    if (raw === undefined || raw === null || Number.isNaN(Number(raw))) {
+      return res.status(400).json({ success: false, error: 'total_repayment_amount (number) is required' });
+    }
+    const total_repayment_amount = Number(raw);
+    if (total_repayment_amount < 0) {
+      return res.status(400).json({ success: false, error: 'total_repayment_amount must be >= 0' });
+    }
+
+    const { data: before, error: bErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (bErr) throw bErr;
+    if (!before) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    const { data: after, error: uErr } = await supabase
+      .from('loans')
+      .update({
+        total_repayment_amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('loan_id', loanId)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan',
+      entity_id: loanId,
+      action: 'adjust_total_repayment',
+      before,
+      after,
+      reason,
+    });
+
+    return res.json({ success: true, loan: after });
+  } catch (err) {
+    console.error('[accounting:total-repayment-adjust]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── POST /api/accounting/loans/:loanId/adjust (principal/outstanding) ─────────
 router.post('/loans/:loanId/adjust', async (req, res) => {
   try {
