@@ -1,18 +1,20 @@
 :root {
-  --bg0: #070a12;
-  --bg1: rgba(255, 255, 255, 0.04);
-  --bg2: rgba(255, 255, 255, 0.06);
-  --bd1: rgba(255, 255, 255, 0.10);
-  --bd2: rgba(255, 255, 255, 0.14);
-  --txt0: rgba(255, 255, 255, 0.92);
-  --txt1: rgba(255, 255, 255, 0.72);
-  --txt2: rgba(255, 255, 255, 0.55);
-  --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  /* Light theme (always-on) */
+  --bg0: #f7f8fc;
+  --bg1: #ffffff;
+  --bg2: #f2f4ff;
+  --bd1: rgba(10, 20, 40, 0.10);
+  --bd2: rgba(10, 20, 40, 0.14);
+  --txt0: rgba(10, 20, 40, 0.92);
+  --txt1: rgba(10, 20, 40, 0.72);
+  --txt2: rgba(10, 20, 40, 0.55);
+  --shadow: 0 16px 36px rgba(10, 20, 40, 0.10);
   --radius: 16px;
   --radius2: 22px;
   --gap: 14px;
-  --accent: #7c5cff;
-  --accent2: #2ee9a6;
+  /* Cool accent palette */
+  --accent: #3b82f6;   /* blue */
+  --accent2: #22c55e;  /* green */
   --danger: #ff4d6d;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -25,9 +27,9 @@ body {
   font-family: var(--sans);
   color: var(--txt0);
   background:
-    radial-gradient(1200px 500px at 20% 0%, rgba(124, 92, 255, 0.22), transparent 55%),
-    radial-gradient(900px 420px at 90% 20%, rgba(46, 233, 166, 0.12), transparent 60%),
-    linear-gradient(180deg, #050711, #070a12 40%, #070a12);
+    radial-gradient(1100px 520px at 10% 0%, rgba(59, 130, 246, 0.16), transparent 58%),
+    radial-gradient(900px 520px at 95% 10%, rgba(34, 197, 94, 0.12), transparent 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg0));
 }
 
 .lo-container {
@@ -41,8 +43,8 @@ body {
   top: 0;
   z-index: 20;
   backdrop-filter: blur(10px);
-  background: linear-gradient(180deg, rgba(7,10,18,0.90), rgba(7,10,18,0.60));
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(247,248,252,0.92), rgba(247,248,252,0.70));
+  border-bottom: 1px solid var(--bd1);
 }
 
 .lo-titlebar {
@@ -91,32 +93,33 @@ body {
   height: 42px;
   padding: 0 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.85);
   color: var(--txt0);
   outline: none;
 }
 .lo-input:focus {
-  border-color: rgba(124, 92, 255, 0.55);
-  box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.12);
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14);
 }
 
 .lo-btn {
   height: 42px;
   padding: 0 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.92);
   color: var(--txt0);
   font-weight: 600;
   cursor: pointer;
 }
-.lo-btn:hover { background: rgba(255,255,255,0.08); }
+.lo-btn:hover { background: #ffffff; }
 .lo-btn:active { transform: translateY(1px); }
 
 .lo-btn-primary {
-  border-color: rgba(124, 92, 255, 0.45);
-  background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(124,92,255,0.55));
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(59,130,246,0.98), rgba(59,130,246,0.72));
 }
 .lo-btn-primary:hover { filter: brightness(1.05); }
 
@@ -124,8 +127,8 @@ body {
   height: 34px;
   padding: 0 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.75);
   color: var(--txt1);
   font-weight: 600;
 }
@@ -137,8 +140,8 @@ body {
 .lo-grid-2 { grid-template-columns: 1fr 1fr; margin-top: var(--gap); }
 
 .lo-card {
-  border: 1px solid rgba(255,255,255,0.08);
-  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.03));
+  border: 1px solid var(--bd1);
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.82));
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 14px;
@@ -148,9 +151,9 @@ body {
   border-radius: var(--radius2);
   padding: 18px;
   background:
-    radial-gradient(900px 260px at 18% 10%, rgba(124,92,255,0.32), transparent 60%),
-    radial-gradient(700px 240px at 90% 30%, rgba(46,233,166,0.14), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    radial-gradient(900px 260px at 18% 10%, rgba(59,130,246,0.22), transparent 60%),
+    radial-gradient(700px 240px at 90% 30%, rgba(34,197,94,0.14), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.84));
 }
 
 .lo-card-head {
@@ -170,11 +173,11 @@ body {
 
 .lo-chip {
   font-size: 11px;
-  color: rgba(255,255,255,0.72);
+  color: var(--txt1);
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.80);
 }
 
 .lo-hero-value {
@@ -192,7 +195,7 @@ body {
 .lo-divider {
   margin: 14px 0;
   height: 1px;
-  background: rgba(255,255,255,0.08);
+  background: var(--bd1);
 }
 
 .lo-mini-grid {
@@ -200,7 +203,7 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
   gap: var(--gap);
 }
-.lo-mini { padding: 10px 10px 8px; border-radius: 14px; background: rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.06); }
+.lo-mini { padding: 10px 10px 8px; border-radius: 14px; background: rgba(255,255,255,0.72); border: 1px solid var(--bd1); }
 .lo-mini-label { font-size: 11px; color: var(--txt2); }
 .lo-mini-value { margin-top: 6px; font-size: 18px; font-weight: 800; }
 .lo-mini-sub { margin-top: 4px; font-size: 12px; color: var(--txt2); }
@@ -212,8 +215,8 @@ body {
   gap: 6px 12px;
   padding: 10px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.72);
 }
 .lo-kpi-name { font-size: 12px; color: var(--txt1); font-weight: 600; }
 .lo-kpi-val { font-size: 16px; font-weight: 800; justify-self: end; }
@@ -241,8 +244,8 @@ body {
   align-items: center;
   padding: 10px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.72);
 }
 .lo-aging-label { color: var(--txt1); font-weight: 600; font-size: 12px; }
 .lo-aging-count { color: var(--txt2); font-size: 12px; text-align: right; }
@@ -252,13 +255,13 @@ body {
   margin: 0;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--bd1);
+  background: rgba(255,255,255,0.78);
   max-height: 320px;
   overflow: auto;
   font-family: var(--mono);
   font-size: 11px;
-  color: rgba(255,255,255,0.80);
+  color: rgba(10, 20, 40, 0.84);
 }
 .lo-hint { margin-top: 10px; font-size: 12px; color: var(--txt2); }
 
