@@ -75,6 +75,38 @@ router.get('/health', (req, res) => {
 
 router.use(requireAccountingAuth);
 
+// ── GET /api/accounting/borrowers/lookup-for-purge ──────────────────────────
+// Search registrations directly (no confirmed-loan filter).
+router.get('/borrowers/lookup-for-purge', async (req, res) => {
+  try {
+    const qRaw = req.query.search != null ? String(req.query.search).trim() : '';
+    const q = qRaw.replace(/,/g, '');
+    if (q.length < 2) {
+      return res.status(400).json({ success: false, error: 'search must be at least 2 characters' });
+    }
+
+    const { data: rows, error } = await supabase
+      .from('registrations')
+      .select('borrower_id, full_name, phone, national_id, region, created_at')
+      .or(
+        [
+          `borrower_id.ilike.%${q}%`,
+          `full_name.ilike.%${q}%`,
+          `phone.ilike.%${q}%`,
+          `national_id.ilike.%${q}%`,
+        ].join(','),
+      )
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+
+    return res.json({ success: true, matches: rows || [] });
+  } catch (err) {
+    console.error('[accounting:lookup-for-purge]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── GET /api/accounting/borrowers ────────────────────────────────────────────
 // Only borrowers with at least one loan where cash disbursement was confirmed (principal sent).
 router.get('/borrowers', async (req, res) => {
@@ -226,6 +258,142 @@ router.patch('/borrowers/:borrowerId', async (req, res) => {
     return res.json({ success: true, registration: after });
   } catch (err) {
     console.error('[accounting:patch-borrower]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+function isMissingRelationError(err, relationName) {
+  const msg = String(err?.message || '');
+  if (String(err?.code || '') === '42P01') return true;
+  return relationName ? msg.toLowerCase().includes(`relation "${relationName}" does not exist`) : msg.toLowerCase().includes('does not exist');
+}
+
+async function safeDeleteIfTableExists(tableName, whereFn) {
+  try {
+    const q = supabase.from(tableName).delete();
+    const res = await whereFn(q);
+    if (res?.error) throw res.error;
+    return { ok: true };
+  } catch (err) {
+    if (isMissingRelationError(err, tableName)) return { ok: true, skipped: true, skipped_reason: 'missing_table' };
+    throw err;
+  }
+}
+
+// ── POST /api/accounting/borrowers/:borrowerId/purge ─────────────────────────
+router.post('/borrowers/:borrowerId/purge', async (req, res) => {
+  try {
+    const borrowerId = String(req.params.borrowerId || '').trim();
+    const actor = req.body?.actor != null ? String(req.body.actor).trim() : '';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    const confirmBorrowerId = req.body?.confirm_borrower_id != null ? String(req.body.confirm_borrower_id).trim() : '';
+
+    if (!borrowerId) return res.status(400).json({ success: false, error: 'borrowerId is required' });
+    if (!actor) return res.status(400).json({ success: false, error: 'actor is required' });
+    if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
+    if (confirmBorrowerId !== borrowerId) {
+      return res.status(400).json({ success: false, error: 'confirm_borrower_id must exactly match borrowerId' });
+    }
+
+    const { data: reg, error: rErr } = await supabase
+      .from('registrations')
+      .select('*')
+      .eq('borrower_id', borrowerId)
+      .maybeSingle();
+    if (rErr) throw rErr;
+    if (!reg) return res.status(404).json({ success: false, error: 'Borrower not found' });
+
+    const { data: loans, error: lErr } = await supabase
+      .from('loans')
+      .select('loan_id, borrower_id, principal_amount, outstanding_amount, disbursed_at, cash_disbursement_confirmed_at')
+      .eq('borrower_id', borrowerId);
+    if (lErr) throw lErr;
+
+    const loanIds = [...new Set((loans || []).map((l) => l.loan_id).filter(Boolean))];
+
+    const snapshot = {
+      borrower_id: borrowerId,
+      registration: {
+        full_name: reg.full_name,
+        phone: reg.phone,
+        national_id: reg.national_id,
+        region: reg.region,
+        address: reg.address,
+        created_at: reg.created_at,
+      },
+      loans: (loans || []).map((l) => ({
+        loan_id: l.loan_id,
+        principal_amount: l.principal_amount,
+        outstanding_amount: l.outstanding_amount,
+        disbursed_at: l.disbursed_at,
+        cash_disbursement_confirmed_at: l.cash_disbursement_confirmed_at,
+      })),
+    };
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'borrower',
+      entity_id: borrowerId,
+      action: 'borrower_purge_start',
+      before: snapshot,
+      after: null,
+      reason,
+    });
+
+    // Children first. For optional tables, treat missing relation as a skip.
+    await safeDeleteIfTableExists('contract_acceptances', (q) => q.eq('borrower_id', borrowerId));
+
+    await safeDeleteIfTableExists('payment_references', (q) => q.eq('borrower_id', borrowerId));
+
+    if (loanIds.length) {
+      await safeDeleteIfTableExists('payments', (q) => q.in('loan_id', loanIds));
+    } else {
+      await safeDeleteIfTableExists('payments', (q) => q.eq('borrower_id', borrowerId));
+    }
+
+    await safeDeleteIfTableExists('notifications_log', (q) => q.eq('borrower_id', borrowerId));
+    await safeDeleteIfTableExists('tamper_logs', (q) => q.eq('borrower_id', borrowerId));
+
+    if (loanIds.length) {
+      await safeDeleteIfTableExists('loan_invoices', (q) => q.in('loan_id', loanIds));
+      await safeDeleteIfTableExists('cash_disbursement_queue', (q) => q.in('loan_id', loanIds));
+      await safeDeleteIfTableExists('loan_requests', (q) => q.in('loan_id', loanIds));
+    } else {
+      await safeDeleteIfTableExists('loan_invoices', (q) => q.eq('borrower_id', borrowerId));
+      await safeDeleteIfTableExists('cash_disbursement_queue', (q) => q.eq('borrower_id', borrowerId));
+      await safeDeleteIfTableExists('loan_requests', (q) => q.eq('borrower_id', borrowerId));
+    }
+
+    await safeDeleteIfTableExists('devices', (q) => q.eq('borrower_id', borrowerId));
+
+    // Preserve raw till/SMS history: unclaim links to the borrower/loan.
+    const { error: unclaimErr } = await supabase
+      .from('lipa_transactions')
+      .update({
+        claimed_borrower_id: null,
+        claimed_loan_id: null,
+        claimed_at: null,
+        payment_reference_id: null,
+      })
+      .eq('claimed_borrower_id', borrowerId);
+    if (unclaimErr) throw unclaimErr;
+
+    await safeDeleteIfTableExists('loans', (q) => q.eq('borrower_id', borrowerId));
+    await safeDeleteIfTableExists('registrations', (q) => q.eq('borrower_id', borrowerId));
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'borrower',
+      entity_id: borrowerId,
+      action: 'borrower_purge_complete',
+      before: snapshot,
+      after: { borrower_id: borrowerId, purged_loan_ids: loanIds, loans_count: loanIds.length },
+      reason,
+    });
+
+    return res.json({ success: true, borrower_id: borrowerId, purged_loan_ids: loanIds });
+  } catch (err) {
+    console.error('[accounting:purge-borrower]', err.message);
     return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
   }
 });

@@ -334,6 +334,29 @@ CREATE INDEX IF NOT EXISTS idx_notif_log_borrower ON notifications_log (borrower
 CREATE INDEX IF NOT EXISTS idx_notif_log_event    ON notifications_log (event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_notif_log_status   ON notifications_log (status);
 
+-- ── Contract acceptances (app contract acceptance receipts) ─────────────
+-- Used by: POST /api/loan/contract-acceptance
+CREATE TABLE IF NOT EXISTS contract_acceptances (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_number      TEXT NOT NULL UNIQUE,
+  loan_id              TEXT NOT NULL,
+  borrower_id          TEXT NOT NULL,
+  borrower_name        TEXT,
+  borrower_phone       TEXT,
+  borrower_region      TEXT,
+  first_repayment_date TEXT,
+  last_repayment_date  TEXT,
+  accepted_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  android_device_id    TEXT,
+  app_version          TEXT,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_contract_acceptances_borrower
+  ON contract_acceptances (borrower_id, accepted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_acceptances_loan
+  ON contract_acceptances (loan_id, accepted_at DESC);
+
 
 -- ── Accounting audit (staff edits to registrations / loans / invoices) ──
 CREATE TABLE IF NOT EXISTS accounting_audit_log (

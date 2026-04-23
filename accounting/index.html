@@ -25,6 +25,7 @@
       <button type="button" class="nav-item" data-view="reports">Reports</button>
       <button type="button" class="nav-item" data-view="queues">Queues</button>
       <button type="button" class="nav-item" data-view="audit">Audit log</button>
+      <button type="button" class="nav-item" data-view="purge">Purge borrower</button>
     </nav>
     <div class="sidebar-footer">
       <p class="hint">Separate from <a href="/admin/">Admin (ops)</a></p>
@@ -225,6 +226,41 @@
           <button type="button" class="btn btn-secondary" id="btn-mat-csv">Download CSV</button>
         </div>
         <pre id="mat-out" class="code-block"></pre>
+      </div>
+    </section>
+
+    <section class="view" id="view-purge">
+      <div class="card">
+        <h3>Borrower data purge</h3>
+        <p class="muted">
+          This permanently deletes a borrower’s details and related records. This action is irreversible.
+        </p>
+        <div class="toolbar">
+          <input type="search" id="purge-search" class="search-box" placeholder="Search name, phone, borrower id, national id…" />
+          <button type="button" class="btn btn-primary" id="btn-purge-search">Search</button>
+        </div>
+        <div class="table-wrap scroll short">
+          <table class="data-table" id="table-purge-matches">
+            <thead><tr><th>Name</th><th>Phone</th><th>National ID</th><th>Borrower ID</th><th>Region</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mt" id="purge-detail" hidden>
+        <h3 id="purge-detail-title">Selected borrower</h3>
+        <div class="muted" id="purge-detail-sub"></div>
+        <form id="form-purge-borrower" class="form-grid" style="margin-top:10px">
+          <label class="full">Reason (required) <input name="reason" type="text" required placeholder="Why this purge is needed" autocomplete="off" /></label>
+          <label>Actor (required) <input name="actor" type="text" required placeholder="Your name or staff id" autocomplete="off" /></label>
+          <label class="full">
+            Type the Borrower ID to confirm
+            <input name="confirm_borrower_id" type="text" required placeholder="Borrower ID" autocomplete="off" />
+          </label>
+          <div class="full">
+            <button type="submit" class="btn btn-primary" id="btn-purge-confirm" disabled>Permanently purge borrower</button>
+          </div>
+        </form>
       </div>
     </section>
 

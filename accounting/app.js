@@ -61,6 +61,7 @@ function setView(name) {
     reports: 'Reports',
     queues: 'Queues',
     audit: 'Audit log',
+    purge: 'Purge borrower',
   };
   $('#page-title').textContent = titles[name] || name;
 }
@@ -69,6 +70,7 @@ let selectedBorrowerId = null;
 let selectedLoanId = null;
 let pendingDisburseLoanId = null;
 let currentLoanDetail = null;
+let selectedPurgeBorrower = null;
 
 async function loadCustomers() {
   const q = $('#customer-search').value.trim();
@@ -109,6 +111,51 @@ async function openCustomer(borrowerId) {
   f.address.value = r.address || '';
   f.reason.value = '';
   f.actor.value = '';
+}
+
+async function loadPurgeMatches() {
+  const q = $('#purge-search').value.trim();
+  if (q.length < 2) {
+    toast('Search must be at least 2 characters', true);
+    return;
+  }
+  const data = await apiFetch(`/borrowers/lookup-for-purge?search=${encodeURIComponent(q)}`);
+  const tb = $('#table-purge-matches tbody');
+  tb.innerHTML = '';
+  for (const m of data.matches || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${escapeHtml(m.full_name)}</td>` +
+      `<td>${escapeHtml(m.phone)}</td>` +
+      `<td>${escapeHtml(m.national_id)}</td>` +
+      `<td>${escapeHtml(m.borrower_id)}</td>` +
+      `<td>${escapeHtml(m.region)}</td>`;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', () => selectPurgeBorrower(m));
+    tb.appendChild(tr);
+  }
+  if (!(data.matches || []).length) {
+    toast('No matches found');
+  }
+}
+
+function selectPurgeBorrower(m) {
+  selectedPurgeBorrower = m;
+  $('#purge-detail').hidden = false;
+  $('#purge-detail-title').textContent = m.full_name || m.borrower_id;
+  $('#purge-detail-sub').textContent = `${m.borrower_id} · ${m.phone || 'no phone'} · ${m.region || 'no region'}`;
+  const f = $('#form-purge-borrower');
+  f.reason.value = '';
+  f.actor.value = '';
+  f.confirm_borrower_id.value = '';
+  syncPurgeConfirmState();
+}
+
+function syncPurgeConfirmState() {
+  const f = $('#form-purge-borrower');
+  const bid = selectedPurgeBorrower?.borrower_id || '';
+  const ok = !!bid && f.confirm_borrower_id.value.trim() === bid && f.reason.value.trim() && f.actor.value.trim();
+  $('#btn-purge-confirm').disabled = !ok;
 }
 
 $('#form-edit-customer').addEventListener('submit', async (e) => {
@@ -568,6 +615,7 @@ function wireNav() {
       }
       if (v === 'audit') loadAudit().catch((e) => toast(e.message, true));
       if (v === 'home') loadParKpis().catch((e) => toast(e.message, true));
+      if (v === 'purge') $('#purge-search')?.focus();
     });
   });
 }
@@ -631,6 +679,14 @@ $('#api-key').value = getKey();
 $('#btn-search-customers').addEventListener('click', () => loadCustomers().catch((e) => toast(e.message, true)));
 $('#btn-search-loans').addEventListener('click', () => loadLoans().catch((e) => toast(e.message, true)));
 $('#btn-lipa-refresh').addEventListener('click', () => loadLipa().catch((e) => toast(e.message, true)));
+$('#btn-purge-search').addEventListener('click', () => loadPurgeMatches().catch((e) => toast(e.message, true)));
+
+$('#purge-search')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    loadPurgeMatches().catch((err) => toast(err.message, true));
+  }
+});
 
 $('#btn-collections-run').addEventListener('click', () => runCollectionsJson().catch((e) => toast(e.message, true)));
 $('#btn-collections-csv').addEventListener('click', () => {
@@ -691,6 +747,31 @@ $('#btn-mat-csv').addEventListener('click', () => {
 $('#btn-queue-lipa').addEventListener('click', () => loadQueueLipa().catch((e) => toast(e.message, true)));
 $('#btn-queue-refs').addEventListener('click', () => loadQueueRefs().catch((e) => toast(e.message, true)));
 $('#btn-audit-refresh').addEventListener('click', () => loadAudit().catch((e) => toast(e.message, true)));
+
+$('#form-purge-borrower')?.addEventListener('input', () => syncPurgeConfirmState());
+$('#form-purge-borrower')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedPurgeBorrower?.borrower_id) return;
+  const f = e.target;
+  const borrowerId = selectedPurgeBorrower.borrower_id;
+  try {
+    await apiFetch(`/borrowers/${encodeURIComponent(borrowerId)}/purge`, {
+      method: 'POST',
+      body: JSON.stringify({
+        actor: f.actor.value.trim(),
+        reason: f.reason.value.trim(),
+        confirm_borrower_id: f.confirm_borrower_id.value.trim(),
+      }),
+    });
+    toast('Borrower purged');
+    selectedPurgeBorrower = null;
+    $('#purge-detail').hidden = true;
+    $('#table-purge-matches tbody').innerHTML = '';
+    $('#purge-search').value = '';
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
 
 wireNav();
 
