@@ -31,6 +31,12 @@ function tzs(n) {
   return `TZS ${x.toLocaleString()}`;
 }
 
+function setText(sel, value) {
+  const el = $(sel);
+  if (!el) return;
+  el.textContent = value;
+}
+
 function fmtIso(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -46,50 +52,80 @@ function toIsoFromDatetimeLocal(v) {
 }
 
 function render(summary) {
-  $('#last-updated').textContent = fmtIso(summary.generated_at);
+  setText('#last-updated', fmtIso(summary.generated_at));
+  setText('#chip-window', `${summary.window || 'day'} · ${fmtIso(summary.from)} → ${fmtIso(summary.to)}`);
 
-  $('#kpi-applicants').textContent = (summary.counts?.applicants_in_window ?? '—').toLocaleString?.() ?? String(summary.counts?.applicants_in_window ?? '—');
-  $('#kpi-customers').textContent = (summary.counts?.customers_in_window ?? '—').toLocaleString?.() ?? String(summary.counts?.customers_in_window ?? '—');
+  setText(
+    '#kpi-applicants',
+    (summary.counts?.applicants_in_window ?? '—').toLocaleString?.() ??
+      String(summary.counts?.applicants_in_window ?? '—')
+  );
+  setText(
+    '#kpi-customers',
+    (summary.counts?.customers_in_window ?? '—').toLocaleString?.() ??
+      String(summary.counts?.customers_in_window ?? '—')
+  );
 
-  $('#kpi-registrations').textContent =
-    `Registrations(window): ${Number(summary.counts?.registrations_in_window || 0).toLocaleString()} · Total regs: ${summary.counts?.registrations_total ?? '—'}`;
-  $('#kpi-customers-total').textContent =
-    `Customers(total): ${Number(summary.counts?.customers_total || 0).toLocaleString()}`;
+  setText(
+    '#kpi-registrations',
+    `Registrations(window): ${Number(summary.counts?.registrations_in_window || 0).toLocaleString()} · Total regs: ${summary.counts?.registrations_total ?? '—'}`
+  );
+  setText(
+    '#kpi-customers-total',
+    `Customers(total): ${Number(summary.counts?.customers_total || 0).toLocaleString()}`
+  );
 
-  $('#kpi-disbursed').textContent = tzs(summary.disbursed?.principal_sum_in_window);
-  $('#kpi-disbursed-count').textContent =
-    `Completed loans(window): ${Number(summary.disbursed?.completed_loan_count_in_window || 0).toLocaleString()}`;
+  setText('#kpi-disbursed', tzs(summary.disbursed?.principal_sum_in_window));
+  setText(
+    '#kpi-disbursed-count',
+    `Completed loans(window): ${Number(summary.disbursed?.completed_loan_count_in_window || 0).toLocaleString()}`
+  );
 
-  $('#kpi-gross').textContent = tzs(summary.portfolio?.gross_outstanding);
+  setText('#kpi-gross', tzs(summary.portfolio?.gross_outstanding));
   const p30 = summary.portfolio?.par?.par30;
-  $('#kpi-par30').textContent = p30 ? `PAR30: ${p30.pct}% (${tzs(p30.balance)})` : 'PAR30: —';
+  setText('#kpi-par30', p30 ? `PAR30: ${p30.pct}% (${tzs(p30.balance)})` : 'PAR30: —');
 
-  $('#kpi-lipa-total').textContent = tzs(summary.payments?.lipa?.total_amount);
-  $('#kpi-lipa-claimed').textContent = tzs(summary.payments?.lipa?.claimed_amount);
-  $('#kpi-lipa-unclaimed').textContent = tzs(summary.payments?.lipa?.unclaimed_amount);
-  $('#kpi-lipa-rows').textContent = `Rows: ${Number(summary.payments?.lipa?.row_count || 0).toLocaleString()}`;
+  setText('#kpi-lipa-total', tzs(summary.payments?.lipa?.total_amount));
+  setText('#kpi-lipa-claimed', tzs(summary.payments?.lipa?.claimed_amount));
+  setText('#kpi-lipa-unclaimed', tzs(summary.payments?.lipa?.unclaimed_amount));
+  setText('#kpi-lipa-rows', `Rows: ${Number(summary.payments?.lipa?.row_count || 0).toLocaleString()}`);
 
-  $('#kpi-verified').textContent = tzs(summary.payments?.verified?.total_amount);
-  $('#kpi-verified-rows').textContent = `Rows: ${Number(summary.payments?.verified?.row_count || 0).toLocaleString()}`;
+  setText('#kpi-verified', tzs(summary.payments?.verified?.total_amount));
+  setText('#kpi-verified-rows', `Rows: ${Number(summary.payments?.verified?.row_count || 0).toLocaleString()}`);
 
   const prc = summary.payments?.payment_references?.counts;
-  $('#kpi-payment-refs').textContent = prc
-    ? `Payment refs(window): total=${prc.total}, pending=${prc.pending}, verified=${prc.verified}, rejected=${prc.rejected}`
-    : 'Payment refs(window): —';
-
-  $('#kpi-prot-ok').textContent =
-    Number(summary.operations?.protections_completed_in_window || 0).toLocaleString();
-  $('#kpi-q-pending').textContent =
-    Number(summary.operations?.queue_pending_enqueued_in_window || 0).toLocaleString();
-  $('#kpi-q-completed').textContent =
-    Number(summary.operations?.queue_completed_updated_in_window || 0).toLocaleString();
-
-  $('#aging-out').textContent = JSON.stringify(
-    { total_receivable: summary.aging?.total_receivable, buckets: summary.aging?.buckets },
-    null,
-    2
+  setText(
+    '#kpi-payment-refs',
+    prc
+      ? `Payment refs(window): total=${prc.total}, pending=${prc.pending}, verified=${prc.verified}, rejected=${prc.rejected}`
+      : 'Payment refs(window): —'
   );
-  $('#raw-out').textContent = JSON.stringify(summary, null, 2);
+
+  setText('#kpi-prot-ok', Number(summary.operations?.protections_completed_in_window || 0).toLocaleString());
+  setText('#kpi-q-pending', Number(summary.operations?.queue_pending_enqueued_in_window || 0).toLocaleString());
+  setText('#kpi-q-completed', Number(summary.operations?.queue_completed_updated_in_window || 0).toLocaleString());
+
+  // Aging
+  setText('#aging-total', tzs(summary.aging?.total_receivable));
+  const table = $('#aging-table');
+  if (table) {
+    table.innerHTML = '';
+    const buckets = summary.aging?.buckets || {};
+    for (const key of Object.keys(buckets)) {
+      const b = buckets[key];
+      const row = document.createElement('div');
+      row.className = 'lo-aging-row';
+      row.innerHTML =
+        `<div class="lo-aging-label">${b?.label || key}</div>` +
+        `<div class="lo-aging-count">${Number(b?.count || 0).toLocaleString()} loans</div>` +
+        `<div class="lo-aging-amount">${tzs(b?.amount || 0)}</div>`;
+      table.appendChild(row);
+    }
+  }
+
+  // Raw JSON (collapsible)
+  const raw = $('#raw-out');
+  if (raw) raw.textContent = JSON.stringify(summary, null, 2);
 }
 
 let timer = null;
@@ -128,6 +164,18 @@ $('#admin-key').value = getKey();
 $('#admin-key').addEventListener('input', () => setKey($('#admin-key').value.trim()));
 $('#btn-refresh').addEventListener('click', () => refresh().catch(() => {}));
 $('#window').addEventListener('change', () => refresh().catch(() => {}));
+
+$('#btn-toggle-raw')?.addEventListener('click', () => {
+  const raw = $('#raw-out');
+  if (!raw) return;
+  raw.hidden = !raw.hidden;
+});
+
+$('#btn-toggle-aging')?.addEventListener('click', () => {
+  const wrap = $('#aging-wrap');
+  if (!wrap) return;
+  wrap.hidden = !wrap.hidden;
+});
 
 startPolling();
 refresh().catch(() => {});
