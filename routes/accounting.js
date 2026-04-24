@@ -55,16 +55,13 @@ function includeIncompleteLoans(req) {
 
 async function fetchConfirmedLoanIdsSet() {
   // Treat "confirmed/complete" loans as those with cash disbursement queue status completed.
-  // Safety net: if queue rows were deleted, fall back to `loans.cash_disbursement_confirmed_at`.
-  const [{ data: queueRows, error: qErr }, { data: loanRows, error: lErr }] = await Promise.all([
-    supabase.from('cash_disbursement_queue').select('loan_id').eq('status', 'completed').limit(50000),
-    supabase.from('loans').select('loan_id').not('cash_disbursement_confirmed_at', 'is', null).limit(50000),
-  ]);
-  if (qErr) throw qErr;
-  if (lErr) throw lErr;
-  return new Set(
-    [...(queueRows || []).map((r) => r.loan_id), ...(loanRows || []).map((r) => r.loan_id)].filter(Boolean),
-  );
+  const { data, error } = await supabase
+    .from('cash_disbursement_queue')
+    .select('loan_id')
+    .eq('status', 'completed')
+    .limit(50000);
+  if (error) throw error;
+  return new Set((data || []).map((r) => r.loan_id));
 }
 
 // ── Borrower app: loan application (no auth — same as /api/loan/* when server mounts it) ──
@@ -78,109 +75,6 @@ router.get('/health', (req, res) => {
 });
 
 router.use(requireAccountingAuth);
-
-// ── GET /api/accounting/admin/disbursement-queue/missing ─────────────────────
-// Lists loans that appear confirmed in `loans` but are missing any queue row.
-router.get('/admin/disbursement-queue/missing', async (req, res) => {
-  try {
-    const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit, 10) || 500));
-    const { data: confirmedLoans, error: lErr } = await supabase
-      .from('loans')
-      .select('loan_id, borrower_id, principal_amount, cash_disbursement_confirmed_at, disbursed_at, updated_at')
-      .not('cash_disbursement_confirmed_at', 'is', null)
-      .order('cash_disbursement_confirmed_at', { ascending: false })
-      .limit(limit);
-    if (lErr) throw lErr;
-
-    const loanIds = [...new Set((confirmedLoans || []).map((l) => l.loan_id).filter(Boolean))];
-    if (!loanIds.length) return res.json({ success: true, count: 0, missing: [] });
-
-    const { data: queueRows, error: qErr } = await supabase
-      .from('cash_disbursement_queue')
-      .select('loan_id')
-      .in('loan_id', loanIds)
-      .limit(50000);
-    if (qErr) throw qErr;
-
-    const present = new Set((queueRows || []).map((r) => r.loan_id).filter(Boolean));
-    const missing = (confirmedLoans || []).filter((l) => l.loan_id && !present.has(l.loan_id));
-
-    return res.json({ success: true, count: missing.length, missing });
-  } catch (err) {
-    console.error('[accounting:queue-missing]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
-
-// ── POST /api/accounting/admin/disbursement-queue/rehydrate-completed ─────────
-// Recreates missing queue rows for confirmed loans using `loans` as source of truth.
-router.post('/admin/disbursement-queue/rehydrate-completed', async (req, res) => {
-  try {
-    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
-    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
-    if (!reason) {
-      return res.status(400).json({ success: false, error: 'reason is required' });
-    }
-
-    const limit = Math.min(5000, Math.max(1, parseInt(req.body?.limit, 10) || 2000));
-    const { data: confirmedLoans, error: lErr } = await supabase
-      .from('loans')
-      .select('loan_id, borrower_id, principal_amount, cash_disbursement_confirmed_at, disbursed_at, updated_at')
-      .not('cash_disbursement_confirmed_at', 'is', null)
-      .order('cash_disbursement_confirmed_at', { ascending: false })
-      .limit(limit);
-    if (lErr) throw lErr;
-
-    const loanIds = [...new Set((confirmedLoans || []).map((l) => l.loan_id).filter(Boolean))];
-    if (!loanIds.length) return res.json({ success: true, inserted: 0, missing_loan_ids: [] });
-
-    const { data: queueRows, error: qErr } = await supabase
-      .from('cash_disbursement_queue')
-      .select('loan_id')
-      .in('loan_id', loanIds)
-      .limit(50000);
-    if (qErr) throw qErr;
-    const present = new Set((queueRows || []).map((r) => r.loan_id).filter(Boolean));
-
-    const toInsertLoans = (confirmedLoans || []).filter((l) => l.loan_id && !present.has(l.loan_id));
-    if (!toInsertLoans.length) {
-      return res.json({ success: true, inserted: 0, missing_loan_ids: [] });
-    }
-
-    const now = new Date().toISOString();
-    const rows = toInsertLoans.map((l) => ({
-      loan_id: l.loan_id,
-      borrower_id: l.borrower_id || null,
-      principal_amount: l.principal_amount != null ? Number(l.principal_amount) : null,
-      phone: null,
-      status: 'completed',
-      enqueued_at: l.cash_disbursement_confirmed_at || l.disbursed_at || l.updated_at || now,
-      updated_at: now,
-    }));
-
-    const { error: insErr } = await supabase.from('cash_disbursement_queue').insert(rows);
-    if (insErr) throw insErr;
-
-    await logAccountingAudit({
-      actor,
-      entity_type: 'cash_disbursement_queue',
-      entity_id: 'bulk_rehydrate',
-      action: 'rehydrate_disbursement_queue_completed',
-      before: { missing_count: toInsertLoans.length },
-      after: { inserted: toInsertLoans.length, loan_ids: toInsertLoans.map((l) => l.loan_id) },
-      reason,
-    });
-
-    return res.json({
-      success: true,
-      inserted: toInsertLoans.length,
-      missing_loan_ids: toInsertLoans.map((l) => l.loan_id),
-    });
-  } catch (err) {
-    console.error('[accounting:queue-rehydrate]', err.message);
-    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
-  }
-});
 
 // ── GET /api/accounting/borrowers/lookup-for-purge ──────────────────────────
 // Search registrations directly (no confirmed-loan filter).
@@ -251,23 +145,10 @@ router.get('/borrowers', async (req, res) => {
     if (cErr) throw cErr;
     const completedLoanIds = new Set((completedRows || []).map((r) => r.loan_id).filter(Boolean));
 
-    // Safety net: if queue rows were deleted, fall back to loans.cash_disbursement_confirmed_at.
-    const { data: latestLoans, error: llErr } = await supabase
-      .from('loans')
-      .select('loan_id, cash_disbursement_confirmed_at, disbursed_at')
-      .in('loan_id', latestLoanIds)
-      .limit(50000);
-    if (llErr) throw llErr;
-    const confirmedByLoan = new Set(
-      (latestLoans || [])
-        .filter((l) => l.loan_id && (l.cash_disbursement_confirmed_at != null || l.disbursed_at != null))
-        .map((l) => l.loan_id),
-    );
-
     const customerSet = new Set(
       orderedBorrowerIds.filter((bid) => {
         const lid = latestLoanByBorrower.get(bid);
-        return lid && (completedLoanIds.has(lid) || confirmedByLoan.has(lid));
+        return lid && completedLoanIds.has(lid);
       }),
     );
     const orderIndex = new Map(orderedBorrowerIds.map((id, i) => [id, i]));
@@ -746,27 +627,6 @@ router.post('/loans/:loanId/confirm-cash-disbursement', async (req, res) => {
       .update({ status: 'completed', updated_at: ts })
       .eq('loan_id', loanId)
       .eq('status', 'pending');
-
-    // Safety net: if the pending queue row is missing (deleted), ensure a completed row exists.
-    const { data: existingQueue, error: exErr } = await supabase
-      .from('cash_disbursement_queue')
-      .select('loan_id, status')
-      .eq('loan_id', loanId)
-      .limit(5);
-    if (exErr) throw exErr;
-    const hasCompleted = (existingQueue || []).some((r) => r.status === 'completed');
-    if (!hasCompleted) {
-      const { error: insErr } = await supabase.from('cash_disbursement_queue').insert({
-        loan_id: loanId,
-        borrower_id: after.borrower_id || null,
-        phone: null,
-        principal_amount: after.principal_amount != null ? Number(after.principal_amount) : null,
-        status: 'completed',
-        enqueued_at: ts,
-        updated_at: ts,
-      });
-      if (insErr) throw insErr;
-    }
 
     return res.json({ success: true, loan: after });
   } catch (err) {
