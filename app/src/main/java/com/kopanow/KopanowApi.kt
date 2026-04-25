@@ -209,6 +209,10 @@ data class LoanRequestResponse(
     @SerializedName("loan_id") val loanId: String?,
     /** True when backend returns existing loan for this phone (resume unfinished). */
     @SerializedName("resume") val resume: Boolean? = null,
+    /** True when backend applied renewal logic (e.g., +10% principal). */
+    @SerializedName("renewal") val renewal: Boolean? = null,
+    /** Final principal used by backend (may differ from request during renewals). */
+    @SerializedName("principal_amount_tzs") val principalAmountTzs: Double? = null,
     @SerializedName("contract_number") val contractNumber: String? = null,
     /** JSON numbers may deserialize as Double when using Gson ToNumberPolicy. */
     @SerializedName("total_repayment_tzs") val totalRepaymentTzs: Double? = null,

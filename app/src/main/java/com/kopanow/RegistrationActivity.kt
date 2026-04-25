@@ -278,14 +278,30 @@ class RegistrationActivity : AppCompatActivity() {
                     btnSubmit.text = "Submit Loan Request"
                     if (result.success && result.data?.success == true) {
                         // backend may return official ids
-                        result.data.borrowerId?.let { KopanowPrefs.borrowerId = it }
+                        val localBorrowerIdBefore = KopanowPrefs.borrowerId
+                        result.data.borrowerId?.let { serverBid ->
+                            KopanowPrefs.borrowerId = serverBid
+                            if (!localBorrowerIdBefore.isNullOrBlank() && localBorrowerIdBefore != serverBid) {
+                                tvStatus.text = "Renewal detected: continuing your existing customer profile."
+                            }
+                        }
                         result.data.loanId?.let { KopanowPrefs.loanId = it }
                         KopanowPrefs.isLoanRequestSubmitted = true
-                        tvStatus.text = result.data.message ?: "Request submitted successfully."
+                        if (!tvStatus.text.toString().contains("Renewal detected")) {
+                            tvStatus.text = result.data.message ?: "Request submitted successfully."
+                        }
 
                         val dr = result.data
                         val loanId = dr.loanId ?: return@withContext
                         val borrowerId = dr.borrowerId ?: KopanowPrefs.borrowerId ?: return@withContext
+                        val backendPrincipal = dr.principalAmountTzs?.let { kotlin.math.round(it).toLong() }
+                        if (backendPrincipal != null && backendPrincipal > 0 && backendPrincipal != amount) {
+                            // Backend applied renewal (+10%) or other policy; keep UI consistent.
+                            KopanowPrefs.requestedLoanAmountTzs = backendPrincipal
+                            etAmount.setText(backendPrincipal.toString())
+                        }
+                        val principalForContract = backendPrincipal ?: amount
+
                         val totalRep = dr.totalRepaymentTzs?.let { kotlin.math.round(it).toLong() }
                             ?: (amount * totalRepaymentMultiplier(repaymentMonths)).roundToLong()
                         val weekly = dr.weeklyInstallmentTzs?.let { kotlin.math.round(it).toLong() }
@@ -300,7 +316,7 @@ class RegistrationActivity : AppCompatActivity() {
                             borrowerName = fullName,
                             borrowerPhone = phone,
                             borrowerRegion = region,
-                            loanAmount = amount,
+                            loanAmount = principalForContract,
                             totalRepayment = totalRep,
                             weeklyInstallment = weekly,
                             numWeeks = weeks,
