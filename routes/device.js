@@ -413,6 +413,33 @@ router.post('/heartbeat', async (req, res) => {
       paid_at: r.paid_at,
     }));
 
+    // ── Completion rule + renewal release ─────────────────────────────────
+    // Completed = outstanding_amount <= 0 AND no invoice is pending/overdue.
+    const anyUnpaid = (invoices || []).some((i) => i.status === 'pending' || i.status === 'overdue');
+    const { data: loanRowForCompletion, error: loanCompErr } = await supabase
+      .from('loans')
+      .select('outstanding_amount, repaid_at')
+      .eq('loan_id', loan_id)
+      .maybeSingle();
+    if (loanCompErr) throw loanCompErr;
+
+    const outstanding = Number(loanRowForCompletion?.outstanding_amount || 0);
+    const isCompleted = !anyUnpaid && outstanding <= 0;
+    if (isCompleted) {
+      // Persist repaid_at once, so renewal policy can rely on it.
+      if (!loanRowForCompletion?.repaid_at) {
+        await supabase
+          .from('loans')
+          .update({ repaid_at: receivedAt, updated_at: new Date().toISOString() })
+          .eq('loan_id', loan_id);
+      }
+      // Tell device to self-release admin; Android will clear session and re-register for renewal.
+      action = 'REMOVE_ADMIN';
+      if (device.fcm_token) {
+        await sendRemoveAdminCommand(device.fcm_token);
+      }
+    }
+
     const { data: rowAfter } = await supabase
       .from('devices')
       .select('is_locked, lock_reason, amount_due')

@@ -635,6 +635,68 @@ router.post('/loans/:loanId/confirm-cash-disbursement', async (req, res) => {
   }
 });
 
+// ── POST /api/accounting/loans/:loanId/close-loan (audited) ──────────────────
+// Ops-only safety valve: mark a loan as repaid when outstanding_amount is 0 and all invoices are paid.
+router.post('/loans/:loanId/close-loan', async (req, res) => {
+  try {
+    const loanId = req.params.loanId;
+    const actor = req.body?.actor || req.headers['x-actor'] || 'accounting';
+    const reason = req.body?.reason != null ? String(req.body.reason).trim() : '';
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'reason is required' });
+    }
+
+    const { data: loan, error: lErr } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('loan_id', loanId)
+      .maybeSingle();
+    if (lErr) throw lErr;
+    if (!loan) return res.status(404).json({ success: false, error: 'Loan not found' });
+
+    const { data: invs, error: iErr } = await supabase
+      .from('loan_invoices')
+      .select('status')
+      .eq('loan_id', loanId)
+      .limit(2000);
+    if (iErr) throw iErr;
+
+    const outstanding = Number(loan.outstanding_amount || 0);
+    const anyUnpaid = (invs || []).some((r) => r.status === 'pending' || r.status === 'overdue');
+    if (outstanding > 0 || anyUnpaid) {
+      return res.status(409).json({
+        success: false,
+        error: 'Loan is not eligible to close: outstanding_amount must be 0 and all invoices must be paid.',
+      });
+    }
+
+    const before = { ...loan };
+    const ts = new Date().toISOString();
+    const { data: after, error: uErr } = await supabase
+      .from('loans')
+      .update({ repaid_at: loan.repaid_at || ts, updated_at: ts })
+      .eq('loan_id', loanId)
+      .select()
+      .single();
+    if (uErr) throw uErr;
+
+    await logAccountingAudit({
+      actor,
+      entity_type: 'loan',
+      entity_id: loanId,
+      action: 'close_loan',
+      before,
+      after,
+      reason,
+    });
+
+    return res.json({ success: true, loan: after });
+  } catch (err) {
+    console.error('[accounting:close-loan]', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // ── GET /api/accounting/loans/:loanId ────────────────────────────────────────
 router.get('/loans/:loanId', async (req, res) => {
   try {

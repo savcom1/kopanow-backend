@@ -29,19 +29,44 @@ async function assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id) {
 
   if (error) throw error;
 
-  const conflict = (rows || []).find(
-    (r) => r.borrower_id !== borrower_id || r.loan_id !== loan_id
-  );
-  if (conflict) {
+  // Same enrollment re-sync is always allowed.
+  const exact = (rows || []).find((r) => r.borrower_id === borrower_id && r.loan_id === loan_id);
+  if (exact) return { ok: true };
+
+  const otherBorrower = (rows || []).find((r) => r.borrower_id !== borrower_id);
+  if (otherBorrower) {
     console.warn(
-      `[enrollment] BLOCK device_id=${id} already linked to borrower=${conflict.borrower_id} loan=${conflict.loan_id}`
+      `[enrollment] BLOCK device_id=${id} already linked to borrower=${otherBorrower.borrower_id} loan=${otherBorrower.loan_id}`
     );
     return {
       ok: false,
-      reason:
-        'This device is already enrolled in Kopanow under another loan. One device cannot be used for two loans.',
+      reason: 'This device is already enrolled under another customer. Please use the original phone.',
     };
   }
+
+  // Renewal policy: allow same device to be used again for the SAME borrower,
+  // but only if the previous loan is completed (outstanding=0 and invoices paid).
+  const priorLoans = (rows || []).map((r) => r.loan_id).filter(Boolean);
+  if (priorLoans.length) {
+    const { data: prior, error: pErr } = await supabase
+      .from('loans')
+      .select('loan_id, outstanding_amount, repaid_at')
+      .in('loan_id', priorLoans)
+      .limit(20);
+    if (pErr) throw pErr;
+
+    // If ANY prior loan for this borrower is still active, block.
+    const active = (prior || []).find(
+      (l) => l.repaid_at == null && Number(l.outstanding_amount || 0) > 0
+    );
+    if (active) {
+      return {
+        ok: false,
+        reason: 'You still have an active loan on this device. Finish repayment before renewing.',
+      };
+    }
+  }
+
   return { ok: true };
 }
 

@@ -104,9 +104,34 @@ router.post('/request', async (req, res) => {
       }
     }
 
+    // Renewal policy: if this phone already has a registration, reuse that borrower_id
+    // so repeat loans stay attached to the same customer identity.
+    const effectiveBorrowerId = existingBorrowerId || borrower_id;
+
     const loan_id = generateLoanId();
 
-    const principal = Number(amount_tzs);
+    // Renewal amount rule: when renewing (known phone/borrower), new principal increases by 10%
+    // from the most recent completed loan's principal.
+    let principal = Number(amount_tzs);
+    let isRenewal = false;
+    if (existingBorrowerId) {
+      const { data: lastCompleted, error: compErr } = await supabase
+        .from('loans')
+        .select('loan_id, principal_amount, repaid_at')
+        .eq('borrower_id', existingBorrowerId)
+        .not('repaid_at', 'is', null)
+        .order('repaid_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (compErr) throw compErr;
+      if (lastCompleted?.principal_amount != null) {
+        const prev = Number(lastCompleted.principal_amount);
+        if (Number.isFinite(prev) && prev > 0) {
+          principal = Math.round(prev * 1.1); // no 1,000-rounding; keep integer TZS
+          isRenewal = true;
+        }
+      }
+    }
     const months = parseRepaymentMonths({
       repayment_months,
       installment_weeks,
@@ -118,7 +143,7 @@ router.post('/request', async (req, res) => {
     const tenorDaysStored = Math.round(30 * months);
 
     if (device_id && String(device_id).trim()) {
-      const enr = await assertDeviceFreeForEnrollment(device_id, borrower_id, loan_id);
+      const enr = await assertDeviceFreeForEnrollment(device_id, effectiveBorrowerId, loan_id);
       if (!enr.ok) {
         return res.status(409).json({ success: false, message: enr.reason });
       }
@@ -129,7 +154,7 @@ router.post('/request', async (req, res) => {
     const { error: regErr } = await supabase
       .from('registrations')
       .upsert({
-        borrower_id,
+        borrower_id: effectiveBorrowerId,
         phone: phoneNorm,
         full_name,
         national_id,
@@ -143,9 +168,9 @@ router.post('/request', async (req, res) => {
     const { error: reqErr } = await supabase
       .from('loan_requests')
       .insert({
-        borrower_id,
+        borrower_id: effectiveBorrowerId,
         loan_id,
-        amount_tzs,
+        amount_tzs: principal,
         tenor_days: tenorDaysStored,
         purpose,
         status: 'submitted'
@@ -158,7 +183,7 @@ router.post('/request', async (req, res) => {
       .from('loans')
       .insert({
         loan_id,
-        borrower_id,
+        borrower_id: effectiveBorrowerId,
         principal_amount: principal,
         outstanding_amount: totalRepayment,
         interest_amount: interestAmount,
@@ -171,7 +196,7 @@ router.post('/request', async (req, res) => {
     // 3b) Weekly installments: total = principal × 120%/140%/160%, ÷ (4×months) weeks
     await createInvoicesForLoan({
       loan_id,
-      borrower_id,
+      borrower_id: effectiveBorrowerId,
       borrower_name: full_name,
       principal_amount: principal,
       repayment_months: months,
@@ -200,7 +225,7 @@ router.post('/request', async (req, res) => {
     const { error: devUpsertErr } = await supabase
       .from('devices')
       .upsert({
-        borrower_id,
+        borrower_id: effectiveBorrowerId,
         loan_id,
         device_id: device_id || null,
         device_model: canonicalModel || device_model || null,
@@ -217,9 +242,11 @@ router.post('/request', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Loan request submitted.',
-      borrower_id,
+      message: isRenewal ? 'Loan renewal request submitted.' : 'Loan request submitted.',
+      borrower_id: effectiveBorrowerId,
       loan_id,
+      renewal: isRenewal,
+      principal_amount_tzs: principal,
       contract_number: contractNumber,
       total_repayment_tzs: Math.round(schedule.totalRepayment),
       weekly_installment_tzs: Math.round(schedule.weekly),
