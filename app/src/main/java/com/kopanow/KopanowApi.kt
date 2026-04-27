@@ -199,7 +199,7 @@ data class LoanRequest(
     @SerializedName("battery_pct") val batteryPct: Int? = null,
     @SerializedName("build_product") val buildProduct: String? = null,
     @SerializedName("build_device") val buildDevice: String? = null,
-    @SerializedName("is_rooted") val isRooted: Boolean? = null
+    @SerializedName("is_rooted") val isRooted: Boolean? = null,
 )
 
 data class LoanRequestResponse(
@@ -219,6 +219,12 @@ data class LoanRequestResponse(
     @SerializedName("weekly_installment_tzs") val weeklyInstallmentTzs: Double? = null,
     @SerializedName("num_weeks") val numWeeks: Int? = null,
     @SerializedName("loan_start_date") val loanStartDate: String? = null,
+)
+
+data class RenewLoanRequest(
+    @SerializedName("borrower_id") val borrowerId: String,
+    @SerializedName("previous_loan_id") val previousLoanId: String,
+    @SerializedName("repayment_months") val repaymentMonths: Int? = null,
 )
 
 /** POST /loan/contract-acceptance — minimal payload for [contract_acceptances]. */
@@ -478,6 +484,21 @@ object KopanowApi {
     suspend fun requestLoan(request: LoanRequest): ApiResult<LoanRequestResponse> =
         // Use accounting prefix: production often exposes /api/accounting/* even when /api/loan is missing from server.js
         post("/accounting/loan/request", request, LoanRequestResponse::class.java)
+
+    /**
+     * Create a new renewal loan + invoice schedule (server-verified completion required).
+     * Returns the contract payload used to open [ContractActivity].
+     */
+    suspend fun renewLoan(
+        borrowerId: String,
+        previousLoanId: String,
+        repaymentMonths: Int? = null,
+    ): ApiResult<LoanRequestResponse> =
+        post(
+            "/loan/renew",
+            RenewLoanRequest(borrowerId = borrowerId, previousLoanId = previousLoanId, repaymentMonths = repaymentMonths),
+            LoanRequestResponse::class.java
+        )
 
     /**
      * Sends snake_case JSON keys explicitly. Gson often serializes Kotlin `data class` properties

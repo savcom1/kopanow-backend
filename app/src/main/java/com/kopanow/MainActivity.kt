@@ -25,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
+import com.kopanow.contract.ContractActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -71,6 +72,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val contractLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res: ActivityResult ->
+        if (res.resultCode == RESULT_OK) {
+            // After accepting renewal contract, keep the session and refresh dashboard state.
+            KopanowLockService.start(this)
+            HeartbeatScheduler.schedule(this)
+            fetchLoanDetails()
+        } else {
+            // User rejected/backed out — keep them on the dashboard.
+            fetchLoanDetails()
+        }
+    }
+
     private lateinit var cardEnrollment: MaterialCardView
     private lateinit var cardDashboard: MaterialCardView
     private lateinit var tvWelcome: TextView
@@ -83,6 +98,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var llUnpaidInvoices: LinearLayout
     private lateinit var tvUnpaidInvoicesEmpty: TextView
     private lateinit var btnHomeHelpVideo: MaterialButton
+    private lateinit var btnRenewLoan: MaterialButton
 
     private lateinit var tvProtectionTitle: TextView
     private lateinit var tvProtectionSub: TextView
@@ -190,6 +206,7 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tv_enrollment_status)
         btnEnroll = findViewById(R.id.btn_test_enroll)
         btnPayNow = findViewById(R.id.btn_pay_now)
+        btnRenewLoan = findViewById(R.id.btn_renew_loan)
         btnHomeHelpVideo = findViewById(R.id.btn_home_help_video)
         tvLoanBalance = findViewById(R.id.tv_loan_balance)
         tvNextDue = findViewById(R.id.tv_next_due)
@@ -221,6 +238,7 @@ class MainActivity : AppCompatActivity() {
 
         btnEnroll.setOnClickListener { triggerEnrollment() }
         btnPayNow.setOnClickListener { initiatePayment() }
+        btnRenewLoan.setOnClickListener { attemptRenewal() }
         btnContactSupport.setOnClickListener { startActivity(SupportContact.dialIntent(this)) }
         btnHomeHelpVideo.setOnClickListener {
             startActivity(Intent(this, HelpVideoActivity::class.java))
@@ -565,12 +583,88 @@ class MainActivity : AppCompatActivity() {
                     tvNextDue.text = formatNextInstallmentDisplay(loan)
                     populateUnpaidInvoices(loan.unpaidInvoices)
                     applyLoanStatusBadge(loan.loanStatus)
+                    updateRenewUi(loan.loanStatus)
                     if (DeviceSecurityManager.isAdminActive(this@MainActivity)) {
                         KopanowPrefs.mdmTamperShieldArmed = true
                     }
                 }
             }
             loadPaymentHistoryUi()
+        }
+    }
+
+    private fun updateRenewUi(rawStatus: String?) {
+        if (!::btnRenewLoan.isInitialized) return
+        val s = rawStatus?.lowercase(Locale.getDefault()).orEmpty()
+        val eligible = s in listOf("paid", "completed")
+        btnRenewLoan.visibility = if (eligible) View.VISIBLE else View.GONE
+        btnRenewLoan.isEnabled = eligible
+    }
+
+    private fun attemptRenewal() {
+        val borrowerId = KopanowPrefs.borrowerId ?: return
+        val previousLoanId = KopanowPrefs.loanId ?: return
+
+        btnRenewLoan.isEnabled = false
+        btnRenewLoan.text = getString(R.string.main_renew_creating)
+
+        activityScope.launch {
+            val result = KopanowApi.renewLoan(
+                borrowerId = borrowerId,
+                previousLoanId = previousLoanId,
+            )
+            withContext(Dispatchers.Main) {
+                btnRenewLoan.text = getString(R.string.main_btn_renew_loan)
+                btnRenewLoan.isEnabled = true
+
+                if (!result.success || result.data?.success != true) {
+                    val msg = result.data?.message ?: (result.error ?: getString(R.string.main_renew_failed))
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                    return@withContext
+                }
+
+                val dr = result.data
+                val newLoanId = dr.loanId ?: run {
+                    Toast.makeText(this@MainActivity, getString(R.string.main_renew_failed), Toast.LENGTH_LONG).show()
+                    return@withContext
+                }
+                val newBorrowerId = dr.borrowerId ?: borrowerId
+
+                // Switch session to the new loan
+                KopanowPrefs.borrowerId = newBorrowerId
+                KopanowPrefs.loanId = newLoanId
+                KopanowPrefs.isLoanRequestSubmitted = true
+
+                // Clear old local invoice cache/alarms so we don't remind for the previous loan.
+                RepaymentAlarmScheduler.cancelAll(applicationContext)
+                KopanowPrefs.repaymentInvoicesJson = null
+                KopanowPrefs.repaymentAlarmRequestCodes = null
+                KopanowPrefs.localPinLockInvoiceNumber = null
+
+                // Build contract intent (same flow as initial registration)
+                val totalRep = dr.totalRepaymentTzs?.let { kotlin.math.round(it).toLong() } ?: 0L
+                val weekly = dr.weeklyInstallmentTzs?.let { kotlin.math.round(it).toLong() } ?: 0L
+                val weeks = dr.numWeeks ?: 0
+                val principal = dr.principalAmountTzs?.let { kotlin.math.round(it).toLong() } ?: KopanowPrefs.requestedLoanAmountTzs
+                val cNum = dr.contractNumber ?: "KN-$newLoanId"
+
+                val i = Intent(this@MainActivity, ContractActivity::class.java)
+                ContractActivity.putExtras(
+                    intent = i,
+                    loanId = newLoanId,
+                    borrowerId = newBorrowerId,
+                    borrowerName = KopanowPrefs.fullName ?: "",
+                    borrowerPhone = KopanowPrefs.phoneNumber ?: "",
+                    borrowerRegion = KopanowPrefs.region ?: "",
+                    loanAmount = principal,
+                    totalRepayment = totalRep,
+                    weeklyInstallment = weekly,
+                    numWeeks = weeks,
+                    loanStart = dr.loanStartDate.orEmpty(),
+                    contractNumber = cNum,
+                )
+                contractLauncher.launch(i)
+            }
         }
     }
 

@@ -241,6 +241,19 @@
                         app:icon="@android:drawable/ic_menu_send"
                         app:iconGravity="textStart" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_renew_loan"
+                        style="@style/Widget.Kopanow.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/grid_2"
+                        android:text="@string/main_btn_renew_loan"
+                        android:visibility="gone"
+                        tools:visibility="visible"
+                        app:icon="@android:drawable/ic_menu_rotate"
+                        app:iconGravity="textStart"
+                        app:iconTint="@color/kopanow_teal" />
+
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"

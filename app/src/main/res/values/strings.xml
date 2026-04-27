@@ -11,6 +11,10 @@
     <string name="home_repayment_lipa_message">marejesho LIPA : 8681154\nMIX BY YAS JINA ELEGANSKY FINANCE</string>
     <string name="reg_phone_hint">Namba ya simu (inayopokea hela na kutuma marejesho) — 255XXXXXXXXX</string>
     <string name="home_help_video_btn">Watch setup help video</string>
+    <string name="main_btn_renew_loan">Renew loan</string>
+    <string name="main_renew_not_eligible">Renewal is only available after your loan is fully paid.</string>
+    <string name="main_renew_creating">Creating renewal…</string>
+    <string name="main_renew_failed">Could not create renewal. Please try again.</string>
 
     <!-- Support (Tanzania) — shown across registration, main app, lock UI, notifications -->
     <string name="support_phone_tel" translatable="false">+255664212529</string>
