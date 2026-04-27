@@ -18,6 +18,175 @@ function generateLoanId() {
   return `LN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
+/**
+ * POST /api/loan/renew
+ *
+ * Creates a brand-new loan + invoice schedule **only** when the previous loan is completed.
+ * The Android app uses this to renew after a paid/completed loan without re-entering details.
+ *
+ * Body:
+ * - borrower_id (required)
+ * - previous_loan_id (required)
+ * - repayment_months (optional 1..3; defaults to previous loan's term if available, else 1)
+ */
+router.post('/renew', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const borrower_id = b.borrower_id != null ? String(b.borrower_id).trim() : '';
+    const previous_loan_id = b.previous_loan_id != null ? String(b.previous_loan_id).trim() : '';
+    const repayment_months_raw = b.repayment_months;
+
+    if (!borrower_id || !previous_loan_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'borrower_id and previous_loan_id are required.',
+      });
+    }
+
+    const [{ data: reg, error: regErr }, { data: prevLoan, error: prevErr }] = await Promise.all([
+      supabase
+        .from('registrations')
+        .select('phone, full_name, region')
+        .eq('borrower_id', borrower_id)
+        .maybeSingle(),
+      supabase.from('loans').select('*').eq('loan_id', previous_loan_id).maybeSingle(),
+    ]);
+    if (regErr) throw regErr;
+    if (prevErr) throw prevErr;
+    if (!reg) return res.status(404).json({ success: false, message: 'Borrower not found.' });
+    if (!prevLoan) return res.status(404).json({ success: false, message: 'Previous loan not found.' });
+    if (String(prevLoan.borrower_id || '').trim() !== borrower_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Previous loan does not belong to this borrower.',
+      });
+    }
+
+    // Completion gate: repaid_at set + outstanding_amount <= 0 + no unpaid invoices.
+    const prevOutstanding = Number(prevLoan.outstanding_amount || 0);
+    if (!prevLoan.repaid_at || prevOutstanding > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Renewal not allowed: your previous loan is not completed yet.',
+      });
+    }
+    const { data: prevUnpaid, error: invErr } = await supabase
+      .from('loan_invoices')
+      .select('id, status')
+      .eq('loan_id', previous_loan_id)
+      .in('status', ['pending', 'overdue'])
+      .limit(5);
+    if (invErr) throw invErr;
+    if ((prevUnpaid || []).length) {
+      return res.status(409).json({
+        success: false,
+        message: 'Renewal not allowed: some installments are still unpaid.',
+      });
+    }
+
+    // Phone gate: no other active, cash-out-confirmed loan for this phone.
+    const phoneNorm = normalizePhone(reg.phone);
+    const elig = await assertPhoneEligibleForNewLoan(phoneNorm);
+    if (!elig.ok) {
+      return res.status(409).json({ success: false, message: elig.reason });
+    }
+
+    const prevPrincipal = Number(prevLoan.principal_amount || 0);
+    if (!Number.isFinite(prevPrincipal) || prevPrincipal <= 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Renewal not allowed: previous loan principal is missing/invalid.',
+      });
+    }
+    const principal = Math.round(prevPrincipal * 1.1);
+
+    const monthsDefault =
+      prevLoan.installment_weeks != null && Number(prevLoan.installment_weeks) > 0
+        ? Math.max(1, Math.min(3, Math.round(Number(prevLoan.installment_weeks) / 4)))
+        : 1;
+    const months = parseRepaymentMonths({
+      repayment_months: repayment_months_raw ?? monthsDefault,
+      installment_weeks: null,
+      tenor_days: null,
+    });
+
+    const loan_id = generateLoanId();
+    const schedule = computeRepaymentSchedule(principal, months);
+    const now = new Date().toISOString();
+
+    const { data: prevDevice } = await supabase
+      .from('devices')
+      .select('device_id, device_model, mpesa_phone, device_info')
+      .eq('borrower_id', borrower_id)
+      .eq('loan_id', previous_loan_id)
+      .maybeSingle();
+
+    await supabase
+      .from('loans')
+      .insert({
+        loan_id,
+        borrower_id,
+        principal_amount: principal,
+        outstanding_amount: schedule.totalRepayment,
+        interest_amount: schedule.interest_amount,
+        device_status: 'unregistered',
+        created_at: now,
+        updated_at: now,
+      })
+      .throwOnError();
+
+    await createInvoicesForLoan({
+      loan_id,
+      borrower_id,
+      borrower_name: reg.full_name || null,
+      principal_amount: principal,
+      repayment_months: months,
+      schedule_start: now,
+    });
+
+    const device_info =
+      prevDevice?.device_info && typeof prevDevice.device_info === 'object'
+        ? { ...prevDevice.device_info, source: 'renewal' }
+        : { source: 'renewal' };
+    const { error: devUpsertErr } = await supabase
+      .from('devices')
+      .upsert(
+        {
+          borrower_id,
+          loan_id,
+          device_id: prevDevice?.device_id || null,
+          device_model: prevDevice?.device_model || null,
+          mpesa_phone: prevDevice?.mpesa_phone || reg.phone || null,
+          status: 'registered',
+          dpc_active: false,
+          device_info,
+          updated_at: now,
+        },
+        { onConflict: 'borrower_id,loan_id' },
+      );
+    if (devUpsertErr) throw devUpsertErr;
+
+    const contractNumber = `KN-${String(loan_id).replace(/[^A-Za-z0-9]/g, '').slice(-10)}-${Date.now().toString(36).toUpperCase()}`;
+
+    return res.json({
+      success: true,
+      message: 'Renewal created. Please accept the new contract to continue.',
+      borrower_id,
+      loan_id,
+      renewal: true,
+      principal_amount_tzs: principal,
+      contract_number: contractNumber,
+      total_repayment_tzs: Math.round(schedule.totalRepayment),
+      weekly_installment_tzs: Math.round(schedule.weekly),
+      num_weeks: schedule.weeks,
+      loan_start_date: new Date(now).toISOString(),
+    });
+  } catch (err) {
+    console.error('[loan:renew]', err?.message || err);
+    return res.status(500).json({ success: false, message: err?.message || 'Internal server error' });
+  }
+});
+
 // POST /api/loan/request
 // Called by Android RegistrationActivity before activation is allowed.
 router.post('/request', async (req, res) => {

@@ -4,7 +4,7 @@ const router = express.Router();
 const supabase = require('../helpers/supabase');
 const { assertDeviceFreeForEnrollment, assertPhoneEligibleForNewLoan } = require('../helpers/deviceEnrollment');
 const { logTamper, EVENT_TYPES } = require('../helpers/tamperLog');
-const { sendLockCommand, sendUnlockCommand, sendRemoveAdminCommand } = require('../helpers/fcm');
+const { sendLockCommand, sendUnlockCommand } = require('../helpers/fcm');
 const { normalizeTzPhone } = require('../helpers/lipaPayment');
 const { canonicalizeDeviceModel } = require('../helpers/deviceModel');
 
@@ -413,12 +413,14 @@ router.post('/heartbeat', async (req, res) => {
       paid_at: r.paid_at,
     }));
 
-    // ── Completion rule + renewal release ─────────────────────────────────
+    // ── Completion rule + renewal eligibility ─────────────────────────────
     // Completed = outstanding_amount <= 0 AND no invoice is pending/overdue.
+    // IMPORTANT: do NOT auto-REMOVE_ADMIN on completion anymore — we keep the session alive
+    // so the borrower can tap "Renew" in-app (backend will create a new loan + invoices).
     const anyUnpaid = (invoices || []).some((i) => i.status === 'pending' || i.status === 'overdue');
     const { data: loanRowForCompletion, error: loanCompErr } = await supabase
       .from('loans')
-      .select('outstanding_amount, repaid_at')
+      .select('outstanding_amount, repaid_at, device_status')
       .eq('loan_id', loan_id)
       .maybeSingle();
     if (loanCompErr) throw loanCompErr;
@@ -426,17 +428,43 @@ router.post('/heartbeat', async (req, res) => {
     const outstanding = Number(loanRowForCompletion?.outstanding_amount || 0);
     const isCompleted = !anyUnpaid && outstanding <= 0;
     if (isCompleted) {
-      // Persist repaid_at once, so renewal policy can rely on it.
+      const ts = receivedAt;
+      // 1) Persist repaid_at once, so renewal policy can rely on it.
       if (!loanRowForCompletion?.repaid_at) {
         await supabase
           .from('loans')
-          .update({ repaid_at: receivedAt, updated_at: new Date().toISOString() })
+          .update({
+            repaid_at: ts,
+            device_status: 'paid',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('loan_id', loan_id);
+      } else if (String(loanRowForCompletion?.device_status || '') !== 'paid') {
+        await supabase
+          .from('loans')
+          .update({
+            device_status: 'paid',
+            updated_at: new Date().toISOString(),
+          })
           .eq('loan_id', loan_id);
       }
-      // Tell device to self-release admin; Android will clear session and re-register for renewal.
-      action = 'REMOVE_ADMIN';
+
+      // 2) Ensure the device is not left locked due to stale state.
+      await supabase
+        .from('devices')
+        .update({
+          is_locked: false,
+          lock_reason: null,
+          amount_due: null,
+          status: 'paid',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', device.id);
+
+      // 3) Nudge the phone to unlock UI immediately (best-effort).
+      action = 'UNLOCK';
       if (device.fcm_token) {
-        await sendRemoveAdminCommand(device.fcm_token);
+        await sendUnlockCommand(device.fcm_token);
       }
     }
 
